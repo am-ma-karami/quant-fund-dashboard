@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="mb-3">
+    <a href="/" class="btn btn-outline-secondary btn-sm">&larr; بازگشت به لیست</a>
+</div>
+
+<div class="row">
+    <div class="col-md-4">
+        <div class="card shadow-sm mb-4">
+            <div class="card-body">
+                <h4 class="card-title text-primary">{{ fund.name }}</h4>
+                <hr>
+                <p><strong>شماره ثبت:</strong> {{ fund.reg_no }}</p>
+                <p><strong>آخرین NAV:</strong> {{ "{:,.0f}".format(fund.nav_stat) }} ریال</p>
+                <p><strong>آخرین آپدیت:</strong> {{ fund.last_updated.strftime('%Y-%m-%d %H:%M:%S') }} UTC</p>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-8">
+        <div class="card shadow-sm mb-4">
+            <div class="card-header bg-white">
+                <h6 class="mb-0">نمودار تغییرات NAV (امروز)</h6>
+            </div>
+            <div class="card-body">
+                <canvas id="navChart" height="100"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    const ctx = document.getElementById('navChart').getContext('2d');
+    
+    const labels = {{ labels | safe }};
+    const data = {{ data | safe }};
+    
+    new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: labels,
+            datasets: [{
+                label: 'NAV Stat',
+                data: data,
+                borderColor: 'rgb(75, 192, 192)',
+                tension: 0.1,
+                fill: true,
+                backgroundColor: 'rgba(75, 192, 192, 0.2)'
+            }]
+        },
+        options: {
+            responsive: true,
+            scales: {
+                y: { beginAtZero: false }
+            }
+        }
+    });
+</script>
+{% endblock %}
