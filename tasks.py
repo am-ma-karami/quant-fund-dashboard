@@ -37,9 +37,25 @@ def update_funds_data():
                     fund = Fund(reg_no=reg_no, name=name, fund_type=f_type)
                     db.add(fund)
                 
+                # آپدیت فیلدهای قیمتی
                 fund.nav_stat = nav_stat
+                fund.nav_sub = item.get("navSub")
+                fund.nav_red = item.get("navRed")
                 fund.net_asset = net_asset
-                fund.fund_type = f_type  # اطمینان از ثبت نوع صندوق
+                fund.units = item.get("units")
+                
+                # آپدیت اطلاعات هویتی و بازدهی
+                fund.manager = item.get("manager", "نامشخص")
+                fund.day30_return = item.get("day30Return")
+                fund.day90_return = item.get("day90Return")
+                fund.day365_return = item.get("day365Return")
+                
+                # آپدیت ترکیب دارایی
+                fund.portfolio_stock = item.get("portfolioStock")
+                fund.portfolio_bond = item.get("portfolioBond")
+                fund.portfolio_deposit = item.get("portfolioDeposit")
+                
+                fund.fund_type = f_type
                 fund.last_updated = datetime.utcnow()
                 
                 # اضافه کردن به تاریخچه
