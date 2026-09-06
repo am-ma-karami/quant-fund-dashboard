@@ -11,6 +11,11 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U quant_user -d fund_db"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
 
   web:
     build: .
@@ -20,7 +25,8 @@ services:
     ports:
       - "8000:8000"
     depends_on:
-      - db
+      db:
+        condition: service_healthy
     environment:
       - DATABASE_URL=postgresql://quant_user:quant_password@db:5432/fund_db
 
