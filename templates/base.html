@@ -13,11 +13,16 @@
     </style>
 </head>
 <body>
-    <nav class="navbar navbar-expand-lg mb-4">
-        <div class="container">
-            <a class="navbar-brand" href="/">داشبورد مانیتورینگ صندوق‌های سهامی</a>
-        </div>
-    </nav>
+    <div class="collapse navbar-collapse">
+        <ul class="navbar-nav me-auto mb-2 mb-lg-0">
+            <li class="nav-item">
+                <a class="nav-link text-white" href="/">داشبورد NAV</a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link text-warning fw-bold" href="/etf-live">🔴 تابلوی معاملات لایو ETF</a>
+            </li>
+        </ul>
+    </div>
     <div class="container">
         {% block content %}{% endblock %}
     </div>

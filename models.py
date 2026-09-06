@@ -44,3 +44,34 @@ class FundHistory(Base):
     recorded_at = Column(DateTime, default=datetime.utcnow, index=True)
     
     fund = relationship("Fund", back_populates="histories")
+
+
+class ETFMarket(Base):
+    """ذخیره وضعیت لحظه‌ای معاملات روی تابلوی ETFها"""
+    __tablename__ = "etf_market"
+    
+    ins_code = Column(String, primary_key=True, index=True)
+    symbol = Column(String, index=True)      # نماد (مثلا: دارا یکم)
+    name = Column(String)                    # نام کامل
+    
+    last_price = Column(Float, nullable=True)     # pDrCotVal (آخرین معامله)
+    closing_price = Column(Float, nullable=True)  # pClosing (قیمت پایانی)
+    price_change = Column(Float, nullable=True)   # تغییر قیمت
+    
+    total_trades = Column(Float, nullable=True)   # zTotTran (تعداد معاملات)
+    last_updated = Column(DateTime, default=datetime.utcnow)
+    
+    histories = relationship("ETFMarketHistory", back_populates="etf", order_by="desc(ETFMarketHistory.recorded_at)")
+
+class ETFMarketHistory(Base):
+    """تاریخچه دقیقه به دقیقه قیمت روی تابلوی ETFها"""
+    __tablename__ = "etf_market_histories"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    ins_code = Column(String, ForeignKey("etf_market.ins_code"), index=True)
+    
+    last_price = Column(Float, nullable=True)
+    closing_price = Column(Float, nullable=True)
+    recorded_at = Column(DateTime, default=datetime.utcnow, index=True)
+    
+    etf = relationship("ETFMarket", back_populates="histories")

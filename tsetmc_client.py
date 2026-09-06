@@ -19,3 +19,15 @@ def fetch_funds_by_type(fund_type: int):
     except Exception as e:
         logger.error(f"Error fetching funds for type {fund_type}: {e}")
         return []
+
+def fetch_live_etf_prices():
+    """دریافت قیمت‌های لحظه‌ای تمام ETFها از روی تابلو به صورت یکجا"""
+    url = "https://cdn.tsetmc.com/api/ClosingPrice/GetTradeTop/ETF/0/9999"
+    try:
+        response = requests.get(url, headers=HEADERS, timeout=10)
+        response.raise_for_status()
+        data = response.json()
+        return data.get("tradeTop", [])
+    except Exception as e:
+        logger.error(f"Error fetching live ETF prices: {e}")
+        return []

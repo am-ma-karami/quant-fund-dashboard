@@ -4,6 +4,9 @@ from database import SessionLocal
 from models import Fund, FundHistory
 from tsetmc_client import fetch_funds_by_type
 
+from models import Fund, FundHistory, ETFMarket, ETFMarketHistory
+from tsetmc_client import fetch_funds_by_type, fetch_live_etf_prices
+
 logger = logging.getLogger(__name__)
 
 # لیست تمام کدهای انواع صندوق‌ها بر اساس مستندات
@@ -72,5 +75,58 @@ def update_funds_data():
     except Exception as e:
         db.rollback()
         logger.error(f"Database error during update: {e}")
+    finally:
+        db.close()
+
+
+def update_etf_market_data():
+    """تسک دریافت قیمت‌های تابلوی ETFها"""
+    logger.info("Starting live ETF market data collection...")
+    db = SessionLocal()
+    try:
+        etf_data = fetch_live_etf_prices()
+        if not etf_data:
+            return
+
+        for item in etf_data:
+            ins_code = item.get("insCode")
+            if not ins_code:
+                continue
+            
+            # استخراج اطلاعات از ساب‌آبجکت instrument
+            instrument = item.get("instrument", {})
+            symbol = instrument.get("lVal18AFC", "نامشخص")
+            name = instrument.get("lVal30", "نامشخص")
+            
+            last_price = item.get("pDrCotVal")
+            closing_price = item.get("pClosing")
+            price_change = item.get("priceChange")
+            total_trades = item.get("zTotTran")
+            
+            # ذخیره یا آپدیت
+            etf = db.query(ETFMarket).filter(ETFMarket.ins_code == ins_code).first()
+            if not etf:
+                etf = ETFMarket(ins_code=ins_code, symbol=symbol, name=name)
+                db.add(etf)
+            
+            etf.last_price = last_price
+            etf.closing_price = closing_price
+            etf.price_change = price_change
+            etf.total_trades = total_trades
+            etf.last_updated = datetime.utcnow()
+            
+            # رکورد تاریخچه قیمتی برای نمودار
+            history = ETFMarketHistory(
+                ins_code=ins_code,
+                last_price=last_price,
+                closing_price=closing_price
+            )
+            db.add(history)
+            
+        db.commit()
+        logger.info(f"Successfully updated {len(etf_data)} ETF market prices.")
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error in ETF market update: {e}")
     finally:
         db.close()

@@ -4,6 +4,9 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 from apscheduler.schedulers.background import BackgroundScheduler
 
+from models import Fund, FundHistory, ETFMarket, ETFMarketHistory
+from tasks import update_funds_data, update_etf_market_data
+
 from database import engine, Base, get_db
 from models import Fund, FundHistory
 from tasks import update_funds_data
@@ -27,10 +30,13 @@ FUND_CATEGORIES = {
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # دریافت دیتا در زمان استارت سرور
-    update_funds_data() 
+    # ران کردن تسک‌ها در زمان استارت
+    update_funds_data()
+    update_etf_market_data()
+    
     scheduler = BackgroundScheduler()
     scheduler.add_job(update_funds_data, 'interval', minutes=1)
+    scheduler.add_job(update_etf_market_data, 'interval', minutes=1) # تسک جدید
     scheduler.start()
     yield
     scheduler.shutdown()
@@ -67,3 +73,9 @@ def read_fund_detail(request: Request, reg_no: int, db: Session = Depends(get_db
         "labels": labels,
         "data": data
     })
+
+
+@app.get("/etf-live")
+def read_etf_live(request: Request, db: Session = Depends(get_db)):
+    etfs = db.query(ETFMarket).order_by(ETFMarket.total_trades.desc()).all()
+    return templates.TemplateResponse("etf_live.html", {"request": request, "etfs": etfs})
