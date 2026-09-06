@@ -2,50 +2,57 @@ import logging
 from datetime import datetime
 from database import SessionLocal
 from models import Fund, FundHistory
-from tsetmc_client import fetch_stock_funds
+from tsetmc_client import fetch_funds_by_type
 
 logger = logging.getLogger(__name__)
 
+# لیست تمام کدهای انواع صندوق‌ها بر اساس مستندات
+FUND_TYPES = [4, 5, 6, 7, 11, 12, 13, 14, 16, 17]
+
 def update_funds_data():
     """این تابع هر یک دقیقه توسط Scheduler اجرا می‌شود"""
-    logger.info("Starting data collection task...")
-    funds_data = fetch_stock_funds()
+    logger.info("Starting data collection task for ALL categories...")
     
-    if not funds_data:
-        logger.warning("No data received from API.")
-        return
-
     db = SessionLocal()
+    total_updated = 0
+    
     try:
-        for item in funds_data:
-            reg_no = int(item.get("regNo", 0))
-            if reg_no == 0:
+        for f_type in FUND_TYPES:
+            funds_data = fetch_funds_by_type(f_type)
+            if not funds_data:
                 continue
                 
-            name = item.get("mfName", "نامشخص")
-            nav_stat = item.get("navStat")
-            net_asset = item.get("netAsset")
-            
-            # ۱. ذخیره یا آپدیت اطلاعات اصلی صندوق
-            fund = db.query(Fund).filter(Fund.reg_no == reg_no).first()
-            if not fund:
-                fund = Fund(reg_no=reg_no, name=name)
-                db.add(fund)
-            
-            fund.nav_stat = nav_stat
-            fund.net_asset = net_asset
-            fund.last_updated = datetime.utcnow()
-            
-            # ۲. اضافه کردن یک رکورد به تاریخچه برای رسم نمودار و بررسی لایو
-            history_record = FundHistory(
-                fund_reg_no=reg_no,
-                nav_stat=nav_stat,
-                net_asset=net_asset
-            )
-            db.add(history_record)
-            
+            for item in funds_data:
+                reg_no = int(item.get("regNo", 0))
+                if reg_no == 0:
+                    continue
+                    
+                name = item.get("mfName", "نامشخص")
+                nav_stat = item.get("navStat")
+                net_asset = item.get("netAsset")
+                
+                # ذخیره یا آپدیت اطلاعات اصلی صندوق
+                fund = db.query(Fund).filter(Fund.reg_no == reg_no).first()
+                if not fund:
+                    fund = Fund(reg_no=reg_no, name=name, fund_type=f_type)
+                    db.add(fund)
+                
+                fund.nav_stat = nav_stat
+                fund.net_asset = net_asset
+                fund.fund_type = f_type  # اطمینان از ثبت نوع صندوق
+                fund.last_updated = datetime.utcnow()
+                
+                # اضافه کردن به تاریخچه
+                history_record = FundHistory(
+                    fund_reg_no=reg_no,
+                    nav_stat=nav_stat,
+                    net_asset=net_asset
+                )
+                db.add(history_record)
+                total_updated += 1
+                
         db.commit()
-        logger.info(f"Successfully updated {len(funds_data)} funds.")
+        logger.info(f"Successfully updated {total_updated} funds across {len(FUND_TYPES)} categories.")
     except Exception as e:
         db.rollback()
         logger.error(f"Database error during update: {e}")

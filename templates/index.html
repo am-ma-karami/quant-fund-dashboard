@@ -1,37 +1,17 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="card shadow-sm">
-    <div class="card-header bg-white d-flex justify-content-between align-items-center">
-        <h5 class="mb-0">لیست صندوق‌های سهامی (دسته ۶)</h5>
-        <small class="text-muted">آپدیت خودکار هر ۱ دقیقه</small>
-    </div>
-    <div class="card-body p-0">
-        <div class="table-responsive">
-            <table class="table table-hover mb-0">
-                <thead class="table-light">
-                    <tr>
-                        <th>شماره ثبت (RegNo)</th>
-                        <th>نام صندوق</th>
-                        <th>NAV ابطال (ریال)</th>
-                        <th>ارزش خالص دارایی (Net Asset)</th>
-                        <th>عملیات</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for fund in funds %}
-                    <tr>
-                        <td>{{ fund.reg_no }}</td>
-                        <td><strong>{{ fund.name }}</strong></td>
-                        <td class="text-success">{{ "{:,.0f}".format(fund.nav_stat) if fund.nav_stat else "-" }}</td>
-                        <td>{{ "{:,.0f}".format(fund.net_asset) if fund.net_asset else "-" }}</td>
-                        <td>
-                            <a href="/fund/{{ fund.reg_no }}" class="btn btn-sm btn-primary">مشاهده لایو</a>
-                        </td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
+<h4 class="mb-4 text-center">انواع صندوق‌های سرمایه‌گذاری</h4>
+<div class="row row-cols-1 row-cols-md-3 g-4">
+    {% for cat in categories %}
+    <div class="col">
+        <div class="card h-100 shadow-sm border-0">
+            <div class="card-body text-center">
+                <h5 class="card-title text-primary">{{ cat.name }}</h5>
+                <p class="card-text text-muted">مشاهده لیست صندوق‌های این دسته و وضعیت NAV لایو آنها</p>
+                <a href="/category/{{ cat.id }}" class="btn btn-outline-primary mt-2">مشاهده لیست</a>
+            </div>
         </div>
     </div>
+    {% endfor %}
 </div>
 {% endblock %}

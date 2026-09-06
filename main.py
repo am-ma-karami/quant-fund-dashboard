@@ -8,17 +8,27 @@ from database import engine, Base, get_db
 from models import Fund, FundHistory
 from tasks import update_funds_data
 
-# ایجاد جداول در دیتابیس
 Base.metadata.create_all(bind=engine)
-
 templates = Jinja2Templates(directory="templates")
 
-# راه‌اندازی Scheduler برای اجرای Task هر ۱ دقیقه
+# دیکشنری نام دسته‌بندی‌ها
+FUND_CATEGORIES = {
+    4: "درآمد ثابت (Fixed Income)",
+    5: "کالا (Commodity)",
+    6: "سهامی (Stock)",
+    7: "مختلط (Mixed)",
+    11: "بازارگردانی (Market Making)",
+    12: "جسورانه (VC)",
+    13: "پروژه (Project)",
+    14: "املاک و مستغلات (REIT)",
+    16: "خصوصی (Private)",
+    17: "صندوق در صندوق (Fund in Fund)"
+}
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # هنگام روشن شدن سرور یک بار دیتا را می‌گیریم
+    # دریافت دیتا در زمان استارت سرور
     update_funds_data() 
-    
     scheduler = BackgroundScheduler()
     scheduler.add_job(update_funds_data, 'interval', minutes=1)
     scheduler.start()
@@ -28,16 +38,24 @@ async def lifespan(app: FastAPI):
 app = FastAPI(lifespan=lifespan)
 
 @app.get("/")
-def read_dashboard(request: Request, db: Session = Depends(get_db)):
-    # دریافت لیست تمام صندوق‌ها برای نمایش در صفحه اول
-    funds = db.query(Fund).order_by(Fund.net_asset.desc()).all()
-    return templates.TemplateResponse("index.html", {"request": request, "funds": funds})
+def read_dashboard(request: Request):
+    # تبدیل دیکشنری به لیستی از آبجکت‌ها برای فرانت‌اند
+    categories = [{"id": k, "name": v} for k, v in FUND_CATEGORIES.items()]
+    return templates.TemplateResponse("index.html", {"request": request, "categories": categories})
+
+@app.get("/category/{type_id}")
+def read_category(request: Request, type_id: int, db: Session = Depends(get_db)):
+    category_name = FUND_CATEGORIES.get(type_id, "دسته‌بندی نامشخص")
+    funds = db.query(Fund).filter(Fund.fund_type == type_id).order_by(Fund.net_asset.desc()).all()
+    return templates.TemplateResponse("category.html", {
+        "request": request, 
+        "funds": funds, 
+        "category_name": category_name
+    })
 
 @app.get("/fund/{reg_no}")
 def read_fund_detail(request: Request, reg_no: int, db: Session = Depends(get_db)):
     fund = db.query(Fund).filter(Fund.reg_no == reg_no).first()
-    
-    # واکشی ۳۰ دیتای آخر (تاریخچه) برای رسم نمودار
     histories = db.query(FundHistory).filter(FundHistory.fund_reg_no == reg_no).order_by(FundHistory.recorded_at.asc()).limit(60).all()
     
     labels = [h.recorded_at.strftime('%H:%M') for h in histories]
