@@ -4,6 +4,7 @@ from datetime import datetime
 from core.database import SessionLocal
 from core.models import Fund, FundHistory, ETFMarket, ETFMarketHistory
 from services.tsetmc_client import fetch_funds_by_type, fetch_live_etf_prices
+from services.preprocessing import clean_fund_data
 
 logger = logging.getLogger(__name__)
 
@@ -18,52 +19,51 @@ def update_funds_data():
     total_updated = 0
     
     try:
+        
         for f_type in FUND_TYPES:
+
             funds_data = fetch_funds_by_type(f_type)
             if not funds_data:
                 continue
-                
+
             for item in funds_data:
-                reg_no = int(item.get("regNo", 0))
+                # عبور دیتای خام از فیلتر پیش‌پردازش
+                clean_item = clean_fund_data(item)
+                
+                reg_no = clean_item['reg_no']
                 if reg_no == 0:
                     continue
                     
-                name = item.get("mfName", "نامشخص")
-                nav_stat = item.get("navStat")
-                net_asset = item.get("netAsset")
-                
                 # ذخیره یا آپدیت اطلاعات اصلی صندوق
                 fund = db.query(Fund).filter(Fund.reg_no == reg_no).first()
                 if not fund:
-                    fund = Fund(reg_no=reg_no, name=name, fund_type=f_type)
+                    fund = Fund(reg_no=reg_no, name=clean_item['name'], fund_type=f_type)
                     db.add(fund)
                 
-                # آپدیت فیلدهای قیمتی
-                fund.nav_stat = nav_stat
-                fund.nav_sub = item.get("navSub")
-                fund.nav_red = item.get("navRed")
-                fund.net_asset = net_asset
-                fund.units = item.get("units")
+                # مقداردهی با دیتای تمیز و اعتبارسنجی شده
+                fund.nav_stat = clean_item['nav_stat']
+                fund.nav_sub = clean_item['nav_sub']
+                fund.nav_red = clean_item['nav_red']
+                fund.net_asset = clean_item['net_asset']
+                fund.units = clean_item['units']
                 
-                # آپدیت اطلاعات هویتی و بازدهی
-                fund.manager = item.get("manager", "نامشخص")
-                fund.day30_return = item.get("day30Return")
-                fund.day90_return = item.get("day90Return")
-                fund.day365_return = item.get("day365Return")
+                fund.manager = clean_item['manager']
+                fund.day30_return = clean_item['day30_return']
+                fund.day90_return = clean_item['day90_return']
+                fund.day365_return = clean_item['day365_return']
                 
-                # آپدیت ترکیب دارایی
-                fund.portfolio_stock = item.get("portfolioStock")
-                fund.portfolio_bond = item.get("portfolioBond")
-                fund.portfolio_deposit = item.get("portfolioDeposit")
+                fund.portfolio_stock = clean_item['portfolio_stock']
+                fund.portfolio_bond = clean_item['portfolio_bond']
+                fund.portfolio_deposit = clean_item['portfolio_deposit']
                 
                 fund.fund_type = f_type
                 fund.last_updated = datetime.utcnow()
                 
-                # اضافه کردن به تاریخچه
+                # رکورد تاریخچه برای رسم نمودار
                 history_record = FundHistory(
                     fund_reg_no=reg_no,
-                    nav_stat=nav_stat,
-                    net_asset=net_asset
+                    nav_stat=clean_item['nav_stat'],
+                    net_asset=clean_item['net_asset']
                 )
                 db.add(history_record)
                 total_updated += 1
