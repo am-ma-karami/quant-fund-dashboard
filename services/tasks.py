@@ -1,11 +1,9 @@
 import logging
 from datetime import datetime
-from database import SessionLocal
-from models import Fund, FundHistory
-from tsetmc_client import fetch_funds_by_type
 
-from models import Fund, FundHistory, ETFMarket, ETFMarketHistory
-from tsetmc_client import fetch_funds_by_type, fetch_live_etf_prices
+from core.database import SessionLocal
+from core.models import Fund, FundHistory, ETFMarket, ETFMarketHistory
+from services.tsetmc_client import fetch_funds_by_type, fetch_live_etf_prices
 
 logger = logging.getLogger(__name__)
 
