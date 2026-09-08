@@ -4,164 +4,160 @@
     <a href="/category/{{ fund.fund_type }}" class="btn btn-outline-secondary btn-sm">&larr; بازگشت به لیست صندوق‌ها</a>
 </div>
 
-<!-- Header Section -->
+<!-- Header: عنوان + نشانگر ریسک -->
 <div class="d-flex justify-content-between align-items-end mb-4 border-bottom pb-3">
     <div>
         <h3 class="text-primary fw-bold mb-1">{{ fund.name }}</h3>
         <span class="text-muted small">شماره ثبت: {{ fund.reg_no }} | مدیر: {{ fund.manager or 'نامشخص' }}</span>
     </div>
     <div class="text-end">
-        <div class="small text-muted">آخرین بروزرسانی</div>
-        <!-- اضافه شدن id برای آپدیت لایو -->
-        <div class="fw-bold" id="last_updated">{{ fund.last_updated.strftime('%Y-%m-%d %H:%M:%S') }}</div>
+        <!-- نمایش سطح ریسک -->
+        <div class="mb-1">
+            <span class="badge bg-{{ fund.risk_profile.color }} px-3 py-2 shadow-sm">
+                پروفایل ریسک: {{ fund.risk_profile.level }}
+            </span>
+        </div>
+        <div class="small text-muted mt-2">آپدیت لایو <span class="spinner-grow spinner-grow-sm text-danger" role="status"></span></div>
     </div>
 </div>
 
 <div class="row">
-    <!-- ستون سمت راست: اطلاعات قیمتی -->
+    <!-- بخش اول: Performance (عملکرد) و Volume (حجم) -->
     <div class="col-md-4">
-        <!-- کارت قیمت‌ها -->
+        
+        <!-- کارت Performance -->
         <div class="card shadow-sm border-0 mb-4">
-            <div class="card-header bg-light d-flex justify-content-between">
-                <strong>اطلاعات قیمتی (ریال)</strong>
-                <span class="badge bg-success pulse">LIVE</span>
+            <div class="card-header bg-dark text-white fw-bold">📈 منحنی عملکرد (Performance)</div>
+            <div class="card-body p-0">
+                <table class="table table-hover mb-0 text-center align-middle">
+                    <thead class="table-light small">
+                        <tr><th>دوره زمانی</th><th>بازدهی (%)</th></tr>
+                    </thead>
+                    <tbody class="fw-bold">
+                        <!-- ماکرو برای رنگ‌بندی داینامیک بازدهی -->
+                        {% macro render_return(val, label) %}
+                        <tr>
+                            <td class="text-muted small">{{ label }}</td>
+                            <td dir="ltr" class="{% if val > 0 %}text-success{% elif val < 0 %}text-danger{% endif %}">
+                                {{ val }}%
+                            </td>
+                        </tr>
+                        {% endmacro %}
+                        
+                        {{ render_return(fund.day1_return or 0, '۱ روزه') }}
+                        {{ render_return(fund.day7_return or 0, '۱ هفته') }}
+                        {{ render_return(fund.day30_return or 0, '۱ ماهه') }}
+                        {{ render_return(fund.day90_return or 0, '۳ ماهه') }}
+                        {{ render_return(fund.day180_return or 0, '۶ ماهه') }}
+                        {{ render_return(fund.day365_return or 0, '۱ ساله') }}
+                    </tbody>
+                </table>
             </div>
+        </div>
+
+        <!-- کارت Volume & Size -->
+        <div class="card shadow-sm border-0 mb-4">
+            <div class="card-header bg-light fw-bold">💰 حجم و دارایی (Volume & Size)</div>
             <ul class="list-group list-group-flush">
                 <li class="list-group-item d-flex justify-content-between align-items-center">
-                    NAV آماری: <span class="fw-bold text-dark" id="nav_stat">{{ "{:,.0f}".format(fund.nav_stat) if fund.nav_stat else "-" }}</span>
+                    کل ارزش دارایی (AUM): 
+                    <span class="fw-bold text-dark">{{ "{:,.0f}".format(fund.net_asset) if fund.net_asset else "-" }} ریال</span>
                 </li>
                 <li class="list-group-item d-flex justify-content-between align-items-center">
-                    قیمت صدور: <span class="fw-bold text-success" id="nav_sub">{{ "{:,.0f}".format(fund.nav_sub) if fund.nav_sub else "-" }}</span>
+                    واحدهای سرمایه‌گذاری: 
+                    <span class="fw-bold text-secondary">{{ "{:,.0f}".format(fund.units) if fund.units else "-" }} واحد</span>
                 </li>
                 <li class="list-group-item d-flex justify-content-between align-items-center">
-                    قیمت ابطال: <span class="fw-bold text-danger" id="nav_red">{{ "{:,.0f}".format(fund.nav_red) if fund.nav_red else "-" }}</span>
-                </li>
-                <li class="list-group-item d-flex justify-content-between align-items-center bg-light">
-                    خالص دارایی‌ها:<span class="fw-bold">{{ "{:,.0f}".format(fund.net_asset) if fund.net_asset else "-" }}</span>
-                </li>
-                <li class="list-group-item d-flex justify-content-between align-items-center bg-light">
-                    تعداد واحدها:<span class="fw-bold">{{ "{:,.0f}".format(fund.units) if fund.units else "-" }}</span>
+                    NAV آماری: 
+                    <span class="fw-bold text-primary" id="nav_stat">{{ "{:,.0f}".format(fund.nav_stat) if fund.nav_stat else "-" }}</span>
                 </li>
             </ul>
         </div>
 
-        <!-- کارت بازدهی -->
-        <div class="card shadow-sm border-0 mb-4">
-            <div class="card-header bg-light"><strong>بازدهی دوره‌ای</strong></div>
-            <div class="card-body">
-                <div class="d-flex justify-content-between mb-2">
-                    <span>۱ ماهه:</span>
-                    <span class="fw-bold {% if fund.day30_return and fund.day30_return > 0 %}text-success{% elif fund.day30_return and fund.day30_return < 0 %}text-danger{% endif %}">
-                        {{ fund.day30_return }}%
-                    </span>
-                </div>
-                <div class="d-flex justify-content-between mb-2">
-                    <span>۳ ماهه:</span>
-                    <span class="fw-bold {% if fund.day90_return and fund.day90_return > 0 %}text-success{% elif fund.day90_return and fund.day90_return < 0 %}text-danger{% endif %}">
-                        {{ fund.day90_return }}%
-                    </span>
-                </div>
-                <div class="d-flex justify-content-between">
-                    <span>۱ ساله:</span>
-                    <span class="fw-bold {% if fund.day365_return and fund.day365_return > 0 %}text-success{% elif fund.day365_return and fund.day365_return < 0 %}text-danger{% endif %}">
-                        {{ fund.day365_return }}%
-                    </span>
-                </div>
-            </div>
-        </div>
     </div>
     
-    <!-- ستون سمت چپ: نمودار -->
+    <!-- بخش دوم: Chart (نمودار) و Risk/Portfolio -->
     <div class="col-md-8">
+        
+        <!-- کارت Chart -->
         <div class="card shadow-sm border-0 mb-4">
-            <div class="card-header bg-light">
+            <div class="card-header bg-light d-flex justify-content-between">
                 <strong>نمودار تغییرات لحظه‌ای NAV</strong>
+                <span class="text-muted small" id="last_updated">{{ fund.last_updated.strftime('%H:%M:%S') }}</span>
             </div>
             <div class="card-body">
-                <canvas id="navChart" height="120"></canvas>
+                <canvas id="navChart" height="110"></canvas>
             </div>
         </div>
 
-        <!-- ترکیب دارایی -->
+        <!-- کارت Asset Allocation (مدل ریسک) -->
         <div class="card shadow-sm border-0 mb-4">
-            <div class="card-header bg-light"><strong>ترکیب دارایی‌ها (پرتفوی)</strong></div>
+            <div class="card-header bg-light fw-bold">📊 ترکیب دارایی و پوشش ریسک (Asset Allocation)</div>
             <div class="card-body">
                 <div class="mb-3">
-                    <div class="d-flex justify-content-between small mb-1">
-                        <span>سهام ({{ fund.portfolio_stock or 0 }}%)</span>
+                    <div class="d-flex justify-content-between small mb-1 fw-bold">
+                        <span class="text-primary">سهام (ریسک بالا)</span>
+                        <span>{{ fund.portfolio_stock or 0 }}%</span>
                     </div>
-                    <div class="progress" style="height: 10px;">
-                        <div class="progress-bar bg-primary" style="width: {{ fund.portfolio_stock or 0 }}%"></div>
+                    <div class="progress" style="height: 12px;">
+                        <div class="progress-bar bg-primary progress-bar-striped" style="width: {{ fund.portfolio_stock or 0 }}%"></div>
                     </div>
                 </div>
                 <div class="mb-3">
-                    <div class="d-flex justify-content-between small mb-1">
-                        <span>اوراق با درآمد ثابت ({{ fund.portfolio_bond or 0 }}%)</span>
+                    <div class="d-flex justify-content-between small mb-1 fw-bold">
+                        <span class="text-info">اوراق درآمد ثابت (ریسک پایین)</span>
+                        <span>{{ fund.portfolio_bond or 0 }}%</span>
                     </div>
-                    <div class="progress" style="height: 10px;">
-                        <div class="progress-bar bg-info" style="width: {{ fund.portfolio_bond or 0 }}%"></div>
+                    <div class="progress" style="height: 12px;">
+                        <div class="progress-bar bg-info progress-bar-striped" style="width: {{ fund.portfolio_bond or 0 }}%"></div>
                     </div>
                 </div>
                 <div class="mb-2">
-                    <div class="d-flex justify-content-between small mb-1">
-                        <span>سپرده بانکی ({{ fund.portfolio_deposit or 0 }}%)</span>
+                    <div class="d-flex justify-content-between small mb-1 fw-bold">
+                        <span class="text-warning">سپرده نقد (بدون ریسک)</span>
+                        <span>{{ fund.portfolio_deposit or 0 }}%</span>
                     </div>
-                    <div class="progress" style="height: 10px;">
-                        <div class="progress-bar bg-warning" style="width: {{ fund.portfolio_deposit or 0 }}%"></div>
+                    <div class="progress" style="height: 12px;">
+                        <div class="progress-bar bg-warning progress-bar-striped" style="width: {{ fund.portfolio_deposit or 0 }}%"></div>
                     </div>
                 </div>
             </div>
         </div>
+
     </div>
 </div>
 
 <script>
-    // 1. مقداردهی اولیه نمودار
+    // رسم لایو چارت (مثل گذشته)
     const ctx = document.getElementById('navChart').getContext('2d');
     const chart = new Chart(ctx, {
         type: 'line',
         data: {
             labels: {{ labels | safe }},
             datasets: [{
-                label: 'NAV Stat',
+                label: 'NAV',
                 data: {{ data | safe }},
                 borderColor: '#0d6efd',
                 backgroundColor: 'rgba(13, 110, 253, 0.1)',
                 borderWidth: 2,
-                pointRadius: 3,
-                tension: 0.2,
+                pointRadius: 2,
+                tension: 0.3,
                 fill: true,
             }]
         },
-        options: {
-            responsive: true,
-            plugins: { legend: { display: false } },
-            scales: {
-                y: { beginAtZero: false, grid: { color: '#f0f0f0' } },
-                x: { grid: { display: false } }
-            }
-        }
+        options: { responsive: true, plugins: { legend: { display: false } } }
     });
 
-    // 2. سیستم آپدیت خودکار (AJAX Polling) هر 60 ثانیه
     setInterval(() => {
         fetch('/api/fund/{{ fund.reg_no }}/chart')
             .then(res => res.json())
             .then(data => {
-                // بروزرسانی آرایه‌های نمودار (اضافه شدن نقطه‌های جدید)
                 chart.data.labels = data.labels;
                 chart.data.datasets[0].data = data.data;
-                chart.update(); // رفرش کردن بصری نمودار
-                
-                // بروزرسانی قیمت‌های متنی روی صفحه با فرمت سه‌رقم سه‌رقم
+                chart.update();
                 document.getElementById('nav_stat').innerText = data.nav_stat ? data.nav_stat.toLocaleString() : "-";
-                document.getElementById('nav_sub').innerText = data.nav_sub ? data.nav_sub.toLocaleString() : "-";
-                document.getElementById('nav_red').innerText = data.nav_red ? data.nav_red.toLocaleString() : "-";
-                
-                // آپدیت ساعت
-                document.getElementById('last_updated').innerText = data.last_updated;
-            })
-            .catch(err => console.error("Error updating fund data:", err));
+                document.getElementById('last_updated').innerText = data.last_updated.split(' ')[1];
+            });
     }, 60000);
 </script>
 {% endblock %}

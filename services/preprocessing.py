@@ -37,8 +37,11 @@ def clean_fund_data(raw_data: dict) -> dict:
     cleaned['portfolio_deposit'] = clip_percentage(raw_data.get("portfolioDeposit"))
     
     # 5. Financial Returns (بازدهی‌ها می‌توانند منفی باشند)
+    cleaned['day1_return'] = float(raw_data.get("day1Return") or 0.0)
+    cleaned['day7_return'] = float(raw_data.get("day7Return") or 0.0)
     cleaned['day30_return'] = float(raw_data.get("day30Return") or 0.0)
     cleaned['day90_return'] = float(raw_data.get("day90Return") or 0.0)
+    cleaned['day180_return'] = float(raw_data.get("day180Return") or 0.0)
     cleaned['day365_return'] = float(raw_data.get("day365Return") or 0.0)
 
     return cleaned

@@ -20,6 +20,9 @@ class Fund(Base):
     nav_red = Column(Float, nullable=True)
     units = Column(Float, nullable=True)
     manager = Column(String, nullable=True)
+    day1_return = Column(Float, nullable=True)
+    day7_return = Column(Float, nullable=True)
+    day180_return = Column(Float, nullable=True)
     day30_return = Column(Float, nullable=True)
     day90_return = Column(Float, nullable=True)
     day365_return = Column(Float, nullable=True)
@@ -29,6 +32,21 @@ class Fund(Base):
     
     last_updated = Column(DateTime, default=iran_time)
     histories = relationship("FundHistory", back_populates="fund", order_by="desc(FundHistory.recorded_at)")
+
+    @property
+    def risk_profile(self):
+        """محاسبه سطح ریسک بر اساس ترکیب دارایی (Quant Approach)"""
+        stock = self.portfolio_stock or 0
+        bond = self.portfolio_bond or 0
+        
+        if stock >= 65:
+            return {"level": "High (پرریسک)", "color": "danger", "score": 8}
+        elif stock >= 30:
+            return {"level": "Medium (متوسط)", "color": "warning", "score": 5}
+        elif bond >= 70:
+            return {"level": "Low (کم‌ریسک)", "color": "success", "score": 2}
+        else:
+            return {"level": "Mixed (مختلط)", "color": "info", "score": 4}
 
 class FundHistory(Base):
     __tablename__ = "fund_histories"
