@@ -2,6 +2,8 @@ from fastapi import APIRouter, Request, Depends
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 
+from fastapi import APIRouter, Request, Depends, HTTPException
+
 from fastapi.responses import RedirectResponse
 
 from core.database import get_db
@@ -105,6 +107,13 @@ def api_get_etfs(db: Session = Depends(get_db)):
 def api_fund_chart(reg_no: int, db: Session = Depends(get_db)):
     repo = FundRepository(db)
     fund = repo.get_fund_by_reg_no(reg_no)
+
+    if fund is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Fund {reg_no} not found"
+        )
+    
     histories = repo.get_fund_history(reg_no)
     return {
         "labels": [h.observed_at.strftime('%H:%M') for h in histories],
@@ -116,7 +125,15 @@ def api_fund_chart(reg_no: int, db: Session = Depends(get_db)):
 @router.get("/api/etf/{ins_code}/chart")
 def api_etf_chart(ins_code: str, db: Session = Depends(get_db)):
     repo = ETFRepository(db)
+
     etf = repo.get_etf_by_ins_code(ins_code)
+
+    if etf is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"ETF {ins_code} not found"
+        )
+
     histories = repo.get_etf_history(ins_code)
     return {
         "labels": [h.observed_at.strftime('%H:%M') for h in histories],
