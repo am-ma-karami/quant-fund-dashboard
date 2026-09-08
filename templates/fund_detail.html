@@ -82,11 +82,13 @@
         <!-- کارت Chart -->
         <div class="card shadow-sm border-0 mb-4">
             <div class="card-header bg-light d-flex justify-content-between">
-                <strong>نمودار تغییرات لحظه‌ای NAV</strong>
-                <span class="text-muted small" id="last_updated">{{ fund.last_updated.strftime('%H:%M:%S') }}</span>
+                <strong>نمودار تغییرات NAV (۹۰ روز اخیر)</strong>
+                <span class="text-muted small" id="last_updated">--:--:--</span>
             </div>
             <div class="card-body">
-                <canvas id="navChart" height="110"></canvas>
+                <div id="chart-loading" class="loading" style="display: none;">در حال دریافت اطلاعات...</div>
+                <div id="chart-error" class="error-state text-danger" style="display: none;"></div>
+                <canvas id="fundChart" height="110" style="display: none;"></canvas>
             </div>
         </div>
 
@@ -127,37 +129,6 @@
     </div>
 </div>
 
-<script>
-    // رسم لایو چارت (مثل گذشته)
-    const ctx = document.getElementById('navChart').getContext('2d');
-    const chart = new Chart(ctx, {
-        type: 'line',
-        data: {
-            labels: {{ labels | safe }},
-            datasets: [{
-                label: 'NAV',
-                data: {{ data | safe }},
-                borderColor: '#0d6efd',
-                backgroundColor: 'rgba(13, 110, 253, 0.1)',
-                borderWidth: 2,
-                pointRadius: 2,
-                tension: 0.3,
-                fill: true,
-            }]
-        },
-        options: { responsive: true, plugins: { legend: { display: false } } }
-    });
-
-    setInterval(() => {
-        fetch('/api/fund/{{ fund.reg_no }}/chart')
-            .then(res => res.json())
-            .then(data => {
-                chart.data.labels = data.labels;
-                chart.data.datasets[0].data = data.data;
-                chart.update();
-                document.getElementById('nav_stat').innerText = data.nav_stat ? data.nav_stat.toLocaleString() : "-";
-                document.getElementById('last_updated').innerText = data.last_updated.split(' ')[1];
-            });
-    }, 60000);
-</script>
+<div id="fund-data" data-reg-no="{{ fund.reg_no }}" style="display: none;"></div>
+<script src="/static/js/fund_detail.js"></script>
 {% endblock %}

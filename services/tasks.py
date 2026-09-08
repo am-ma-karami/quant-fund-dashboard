@@ -1,6 +1,7 @@
 import logging
 from datetime import datetime
 from zoneinfo import ZoneInfo
+from dateutil import parser
 
 from core.database import SessionLocal
 from core.repositories import FundRepository, ETFRepository

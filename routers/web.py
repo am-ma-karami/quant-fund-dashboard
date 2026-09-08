@@ -1,10 +1,9 @@
-from fastapi import APIRouter, Request, Depends
-from fastapi.templating import Jinja2Templates
-from sqlalchemy.orm import Session
-
 from fastapi import APIRouter, Request, Depends, HTTPException
-
 from fastapi.responses import RedirectResponse
+from fastapi.templating import Jinja2Templates
+from fastapi_cache.decorator import cache
+from sqlalchemy.orm import Session
+from sqlalchemy import text
 
 from core.database import get_db
 from core.repositories import FundRepository, ETFRepository
@@ -20,26 +19,24 @@ FUND_CATEGORIES = {
 }
 
 @router.get("/")
-def read_dashboard(request: Request, db: Session = Depends(get_db)):
-    fund_repo = FundRepository(db)
-    etf_repo = ETFRepository(db)
-    
-    categories = [{"id": k, "name": v} for k, v in FUND_CATEGORIES.items()]
-    
-    top_funds = fund_repo.get_top_funds_by_return(limit=10)
-    top_funds_names = [f.name for f in top_funds]
-    top_funds_returns = [f.day30_return for f in top_funds]
-    
-    # دریافت دیتای نبض بازار
-    pulse = etf_repo.get_market_pulse()
-    
-    return templates.TemplateResponse("index.html", {
-        "request": request, 
-        "categories": categories,
-        "top_funds_names": top_funds_names,
-        "top_funds_returns": top_funds_returns,
-        "pulse": pulse 
-    })
+def read_dashboard(
+    request: Request
+):
+    categories = [
+        {
+            "id": key,
+            "name": value
+        }
+        for key, value in FUND_CATEGORIES.items()
+    ]
+
+    return templates.TemplateResponse(
+        "index.html",
+        {
+            "request": request,
+            "categories": categories
+        }
+    )
 
 @router.get("/category/{type_id}")
 def read_category(request: Request, type_id: int, db: Session = Depends(get_db)):
@@ -54,44 +51,21 @@ def read_category(request: Request, type_id: int, db: Session = Depends(get_db))
     })
 
 @router.get("/fund/{reg_no}")
-def read_fund_detail(
-    request: Request,
-    reg_no: int,
-    db: Session = Depends(get_db)
-):
+def read_fund_detail(request: Request, reg_no: int, db: Session = Depends(get_db)):
     repo = FundRepository(db)
-
     fund = repo.get_fund_by_reg_no(reg_no)
-
-    if fund is None:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Fund {reg_no} not found"
-        )
-
+    
+    # اگر صندوق هنوز دانلود نشده بود، 404 بده
+    if not fund:
+        raise HTTPException(status_code=404, detail="صندوق در حال بروزرسانی است یا وجود ندارد.")
+        
     histories = repo.get_fund_history(reg_no)
-
-    labels = [
-        h.observed_at.strftime("%H:%M")
-        for h in histories
-        if h.observed_at is not None
-    ]
-
-    data = [
-        h.nav_stat
-        for h in histories
-        if h.observed_at is not None
-    ]
-
-    return templates.TemplateResponse(
-        "fund_detail.html",
-        {
-            "request": request,
-            "fund": fund,
-            "labels": labels,
-            "data": data,
-        }
-    )
+    labels = [h.observed_at.strftime('%Y-%m-%d') for h in histories]
+    data = [h.nav_stat for h in histories]
+    
+    return templates.TemplateResponse("fund_detail.html", {
+        "request": request, "fund": fund, "labels": labels, "data": data
+    })
 
 @router.get("/etf-live")
 def read_etf_live(request: Request, db: Session = Depends(get_db)):
@@ -140,10 +114,26 @@ def api_fund_chart(reg_no: int, db: Session = Depends(get_db)):
     
     histories = repo.get_fund_history(reg_no)
     return {
-        "labels": [h.observed_at.strftime('%H:%M') for h in histories],
-        "data": [h.nav_stat for h in histories],
-        "nav_stat": fund.nav_stat, "nav_sub": fund.nav_sub, "nav_red": fund.nav_red,
-        "last_updated": fund.last_updated.strftime('%Y-%m-%d %H:%M:%S')
+        "fund": {
+            "reg_no": fund.reg_no,
+            "name": fund.name,
+            "nav_stat": fund.nav_stat or 0,
+            "nav_sub": fund.nav_sub or 0,
+            "nav_red": fund.nav_red or 0,
+            "last_updated": (
+                fund.last_updated.isoformat()
+                if fund.last_updated
+                else None
+            )
+        },
+        "history": [
+            {
+                "timestamp": h.observed_at.isoformat(),
+                "nav_stat": h.nav_stat or 0,
+                "net_asset": h.net_asset or 0
+            }
+            for h in histories
+        ]
     }
 
 @router.get("/api/etf/{ins_code}/chart")
@@ -193,10 +183,58 @@ def api_etf_chart(ins_code: str, db: Session = Depends(get_db)):
 
 
 @router.get("/api/market-pulse")
+@cache(expire=15)
 def api_market_pulse(db: Session = Depends(get_db)):
     """API برای آپدیت لایو داشبورد فرماندهی"""
     repo = ETFRepository(db)
     return repo.get_market_pulse()
+
+
+@router.get("/api/dashboard/top-funds")
+@cache(expire=30)
+def api_top_funds(
+    db: Session = Depends(get_db)
+):
+    repo = FundRepository(db)
+
+    funds = repo.get_top_funds_by_return(
+        limit=10
+    )
+
+    return [
+        {
+            "rank": index + 1,
+            "reg_no": fund.reg_no,
+            "name": fund.name,
+            "return_30d": fund.day30_return or 0
+        }
+        for index, fund in enumerate(funds)
+    ]
+
+
+@router.get("/api/dashboard/heatmap")
+@cache(expire=60)
+def api_dashboard_heatmap(
+    db: Session = Depends(get_db)
+):
+    repo = FundRepository(db)
+
+    funds = repo.get_heatmap_data(limit=50)
+
+    return [
+        {
+            "name": (
+                f.name
+                .replace("صندوق سرمایه گذاری ", "")
+                .replace("صندوق ", "")
+                [:15]
+            ),
+            "value": f.net_asset or 0,
+            "colorValue": f.day30_return or 0,
+            "reg_no": f.reg_no
+        }
+        for f in funds
+    ]
 
 
 @router.get("/api/heatmap")
@@ -240,3 +278,21 @@ def api_screener_data(db: Session = Depends(get_db)):
         "day365_return": f.day365_return or 0,
         "portfolio_stock": f.portfolio_stock or 0
     } for f in funds]
+
+
+@router.get("/health")
+def health():
+    return {
+        "status": "ok"
+    }
+
+
+@router.get("/ready")
+def readiness(
+    db: Session = Depends(get_db)
+):
+    db.execute(text("SELECT 1"))
+    
+    return {
+        "status": "ready"
+    }

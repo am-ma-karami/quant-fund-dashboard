@@ -21,9 +21,20 @@ class FundRepository:
         return self.db.query(Fund).filter(Fund.fund_type == 6, Fund.day30_return != None)\
                       .order_by(Fund.day30_return.desc()).limit(limit).all()
 
-    def get_fund_history(self, reg_no: int, limit: int = 60):
-        return self.db.query(FundHistory).filter(FundHistory.fund_reg_no == reg_no)\
-                      .order_by(FundHistory.observed_at.asc()).limit(limit).all()
+    def get_fund_history(self, reg_no: int, limit: int = 90):
+        rows = (
+            self.db.query(FundHistory)
+            .filter(
+                FundHistory.fund_reg_no == reg_no
+            )
+            .order_by(
+                FundHistory.observed_at.desc()
+            )
+            .limit(limit)
+            .all()
+        )
+
+        return list(reversed(rows))
 
     def upsert_fund(self, reg_no: int, name: str, fund_type: int, clean_data: dict):
         """بروزرسانی یا ساخت صندوق جدید (Upsert)"""
@@ -72,6 +83,14 @@ class FundRepository:
         latest = self.db.query(FundHistory).filter(FundHistory.fund_reg_no == reg_no)\
                         .order_by(FundHistory.observed_at.desc()).first()
         return latest.observed_at if latest else None
+
+    def has_history(self, reg_no: int) -> bool:
+        return (
+            self.db.query(FundHistory.id)
+            .filter(FundHistory.fund_reg_no == reg_no)
+            .first()
+            is not None
+        )
 
     def upsert_fund_history(self, reg_no: int, nav_stat: float, net_asset: float, observed_at: datetime):
         """منطق UPSERT: اگر بود آپدیت کن، اگر نبود بساز"""

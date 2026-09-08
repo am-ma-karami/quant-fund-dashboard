@@ -93,3 +93,20 @@ class ETFMarketHistory(Base):
     # زمانی که کرون‌جاب ما این دیتا را در دیتابیس خودمان ثبت کرد
     created_at = Column(DateTime, default=iran_time) 
     etf = relationship("ETFMarket", back_populates="histories")
+
+
+class SyncStatus(Base):
+    __tablename__ = "sync_status"
+
+    id = Column(Integer, primary_key=True)
+    job_name = Column(String, unique=True, nullable=False)
+
+    status = Column(String, nullable=False)
+
+    started_at = Column(DateTime, nullable=True)
+    finished_at = Column(DateTime, nullable=True)
+
+    updated_count = Column(Integer, default=0)
+    failed_count = Column(Integer, default=0)
+
+    error_message = Column(String, nullable=True)

@@ -2,7 +2,44 @@ import logging
 import time
 import requests
 
+
 logger = logging.getLogger(__name__)
+
+
+def request_with_retry(
+    url: str,
+    *,
+    headers: dict = None,
+    params: dict = None,
+    timeout: int = 10,
+    retries: int = 3,
+):
+    last_error = None
+
+    for attempt in range(retries):
+        try:
+            response = requests.get(
+                url,
+                headers=headers,
+                params=params,
+                timeout=timeout,
+            )
+
+            response.raise_for_status()
+
+            return response
+
+        except requests.RequestException as exc:
+            last_error = exc
+
+            if attempt == retries - 1:
+                break
+
+            sleep_time = 2 ** attempt
+
+            time.sleep(sleep_time)
+
+    raise last_error
 
 
 class TSETMCProvider:
@@ -21,43 +58,24 @@ class TSETMCProvider:
             "Accept": "application/json",
         }
 
-        self.timeout = (5, 30)
+        self.timeout = 10
         self.max_retries = 3
-
-    def _get_json(self, url: str):
-        for attempt in range(1, self.max_retries + 1):
-
-            try:
-                response = requests.get(
-                    url,
-                    headers=self.headers,
-                    timeout=self.timeout,
-                )
-
-                response.raise_for_status()
-
-                return response.json()
-
-            except requests.RequestException as exc:
-
-                logger.warning(
-                    "TSETMC request failed "
-                    "(attempt %s/%s): %s",
-                    attempt,
-                    self.max_retries,
-                    exc,
-                )
-
-                if attempt < self.max_retries:
-                    time.sleep(2 ** (attempt - 1))
-
-        return None
 
     def fetch_funds_by_type(self, fund_type: int) -> list:
 
         url = f"{self.base_url}/Fund/GetFunds/{fund_type}"
 
-        data = self._get_json(url)
+        try:
+            response = request_with_retry(
+                url,
+                headers=self.headers,
+                timeout=self.timeout,
+                retries=self.max_retries,
+            )
+            data = response.json()
+        except requests.RequestException:
+            logger.exception("Failed to fetch funds by type %s", fund_type)
+            return []
 
         if not data:
             return []
@@ -75,7 +93,17 @@ class TSETMCProvider:
                 f"GetTradeTop/ETF/{flow}/9999"
             )
 
-            data = self._get_json(url)
+            try:
+                response = request_with_retry(
+                    url,
+                    headers=self.headers,
+                    timeout=self.timeout,
+                    retries=self.max_retries,
+                )
+                data = response.json()
+            except requests.RequestException:
+                logger.exception("Failed to fetch ETF prices for flow %s", flow)
+                continue
 
             if not data:
                 continue
@@ -87,27 +115,21 @@ class TSETMCProvider:
         return results
 
     def fetch_fund_history_detail(self, reg_no: int) -> list:
-            """گرفتن تاریخچه 90 روزه یک صندوق (Bootstrap)"""
-            # آدرس درست بر اساس مستندات TSETMC
-            url = f"{self.base_url}/Fund/GetFundInDetail/{reg_no}"
-            
-            # لاجیک Retry ساده برای جلوگیری از ارورهای تایم‌اوت موقت بورس
-            for attempt in range(3):
-                try:
-                    response = requests.get(url, headers=self.headers, timeout=10)
-                    response.raise_for_status()
-                    
-                    # استخراج دیتای صندوق
-                    data = response.json().get("fund", {})
-                    
-                    # بر اساس خروجی بورس، آرایه تاریخچه داخل کلید fundProfits است
-                    history = data.get("fundProfits", [])
-                    
-                    # اگر با موفقیت گرفت، از حلقه خارج شو و دیتا را برگردان
-                    return history
-                    
-                except requests.exceptions.RequestException as e:
-                    logger.warning(f"TSETMC request failed (attempt {attempt+1}/3): {e}")
-                    if attempt == 2:  # اگر بار سوم هم خطا داد
-                        return []
+        """گرفتن تاریخچه 90 روزه یک صندوق (Bootstrap)"""
+        url = f"{self.base_url}/Fund/GetFundInDetail/{reg_no}"
+
+        try:
+            response = request_with_retry(
+                url,
+                headers=self.headers,
+                timeout=self.timeout,
+                retries=self.max_retries,
+            )
+            data = response.json().get("fund", {})
+        except requests.RequestException:
+            logger.exception("Failed to fetch history for fund %s", reg_no)
             return []
+
+        history = data.get("fundProfits", [])
+
+        return history

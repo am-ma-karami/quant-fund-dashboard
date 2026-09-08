@@ -21,36 +21,36 @@
     <div class="row text-center g-4">
         <div class="col-md-2 col-6">
             <div class="text-secondary mb-1 small">Total Funds</div>
-            <div class="fs-3 fw-bold text-white" id="pulse_total">{{ pulse.total }}</div>
+            <div class="fs-3 fw-bold text-white" id="pulse_total">-</div>
         </div>
         <div class="col-md-2 col-6 border-start border-secondary">
             <div class="text-secondary mb-1 small">Positive</div>
-            <div class="fs-3 fw-bold text-success" id="pulse_positive">{{ pulse.positive }} ↑</div>
+            <div class="fs-3 fw-bold text-success" id="pulse_positive">-</div>
         </div>
         <div class="col-md-2 col-6 border-start border-secondary">
             <div class="text-secondary mb-1 small">Negative</div>
-            <div class="fs-3 fw-bold text-danger" id="pulse_negative">{{ pulse.negative }} ↓</div>
+            <div class="fs-3 fw-bold text-danger" id="pulse_negative">-</div>
         </div>
         <div class="col-md-2 col-6 border-start border-secondary">
             <div class="text-secondary mb-1 small">Unchanged</div>
-            <div class="fs-3 fw-bold text-warning" id="pulse_unchanged">{{ pulse.unchanged }}</div>
+            <div class="fs-3 fw-bold text-warning" id="pulse_unchanged">-</div>
         </div>
         <div class="col-md-4 col-12 border-start border-secondary text-start ps-4">
             <div class="text-secondary mb-2 small">Market Breadth (Advancing / Total)</div>
             <div class="d-flex justify-content-between text-white small mb-1">
-                <span id="breadth_text">{{ pulse.breadth }}%</span>
+                <span id="breadth_text">-</span>
             </div>
             <div class="progress bg-secondary" style="height: 6px;">
-                <div id="breadth_bar" class="progress-bar bg-success" style="width: {{ pulse.breadth }}%"></div>
+                <div id="breadth_bar" class="progress-bar bg-success" style="width: 0%"></div>
             </div>
 
             <div class="text-secondary mb-2 small mt-3">Up Volume / Total Volume</div>
             <div class="d-flex justify-content-between text-white small mb-1">
-                <span id="vol_text">{{ pulse.up_volume_ratio }}%</span>
-                <span class="text-muted" id="total_trades_txt">Trades: {{ "{:,.0f}".format(pulse.total_trades) }}</span>
+                <span id="vol_text">-</span>
+                <span class="text-muted" id="total_trades_txt">Trades: -</span>
             </div>
             <div class="progress bg-secondary" style="height: 6px;">
-                <div id="vol_bar" class="progress-bar bg-info" style="width: {{ pulse.up_volume_ratio }}%"></div>
+                <div id="vol_bar" class="progress-bar bg-info" style="width: 0%"></div>
             </div>
         </div>
     </div>
@@ -62,7 +62,8 @@
         <h5 class="mb-0 text-primary">تحلیل مقایسه‌ای: ۱۰ صندوق سهامی برتر (بازدهی ۳۰ روزه)</h5>
     </div>
     <div class="card-body">
-        <canvas id="bigPictureChart" height="80"></canvas>
+        <div id="top-funds" class="loading">در حال دریافت اطلاعات...</div>
+        <canvas id="bigPictureChart" height="80" style="display: none;"></canvas>
     </div>
 </div>
 
@@ -99,88 +100,5 @@
     setInterval(() => {
         document.getElementById('clock').innerText = new Date().toLocaleTimeString('fa-IR');
     }, 1000);
-
-    // 2. آپدیت لایو دیتاهای ترمینال (هر 60 ثانیه بدون رفرش)
-    setInterval(() => {
-        fetch('/api/market-pulse')
-            .then(res => res.json())
-            .then(data => {
-                document.getElementById('pulse_total').innerText = data.total;
-                document.getElementById('pulse_positive').innerText = data.positive + ' ↑';
-                document.getElementById('pulse_negative').innerText = data.negative + ' ↓';
-                document.getElementById('pulse_unchanged').innerText = data.unchanged;
-                
-                document.getElementById('breadth_text').innerText = data.breadth + '%';
-                document.getElementById('breadth_bar').style.width = data.breadth + '%';
-                
-                document.getElementById('vol_text').innerText = data.up_volume_ratio + '%';
-                document.getElementById('vol_bar').style.width = data.up_volume_ratio + '%';
-                document.getElementById('total_trades_txt').innerText = 'Trades: ' + data.total_trades.toLocaleString();
-            })
-            .catch(err => console.error("Pulse update failed", err));
-    }, 60000);
-
-    // 3. رسم نمودار تصویر بزرگ
-    const ctx = document.getElementById('bigPictureChart').getContext('2d');
-    new Chart(ctx, {
-        type: 'bar',
-        data: {
-            labels: {{ top_funds_names | safe }},
-            datasets: [{
-                label: 'بازدهی ۳۰ روزه (%)',
-                data: {{ top_funds_returns | safe }},
-                backgroundColor: 'rgba(54, 162, 235, 0.7)',
-                borderColor: 'rgba(54, 162, 235, 1)',
-                borderWidth: 1,
-                borderRadius: 4
-            }]
-        },
-        options: { responsive: true, scales: { y: { beginAtZero: true } } }
-    });
-
-// 4. رسم نقشه حرارتی (Treemap)
-    fetch('/api/heatmap')
-        .then(res => res.json())
-        .then(data => {
-            Highcharts.chart('heatmap-container', {
-                colorAxis: {
-                    min: -15, // کمترین بازدهی 
-                    max: 15,  // بیشترین بازدهی 
-                    stops: [
-                        [0, '#dc3545'],   // بازدهی منفی (قرمز)
-                        [0.5, '#f8f9fa'], // بازدهی صفر (خاکستری روشن/سفید)
-                        [1, '#198754']    // بازدهی مثبت (سبز)
-                    ]
-                },
-                series: [{
-                    type: 'treemap',
-                    layoutAlgorithm: 'squarified',
-                    data: data,
-                    // سفید کردن رنگ نوشته‌های داخل نقشه برای خوانایی بهتر
-                    dataLabels: {
-                        style: {
-                            color: '#FFFFFF',
-                            textOutline: '1px contrast'
-                        }
-                    },
-                    events: {
-                        click: function(event) {
-                            window.location.href = `/fund/${event.point.reg_no}`;
-                        }
-                    }
-                }],
-                title: { text: null },
-                tooltip: {
-                    useHTML: true,
-                    formatter: function() {
-                        return `<b>${this.point.name}</b><br>
-                                ارزش دارایی: ${(this.point.value / 10000000000).toFixed(0)} میلیارد تومان<br>
-                                بازدهی 30 روزه: <b style="color:${this.point.colorValue > 0 ? 'green' : 'red'}">
-                                ${this.point.colorValue}%</b>`;
-                    }
-                }
-            });
-        });
-        
 </script>
 {% endblock %}
