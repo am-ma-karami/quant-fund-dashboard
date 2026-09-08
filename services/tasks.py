@@ -1,13 +1,21 @@
 import logging
+from datetime import datetime
+from zoneinfo import ZoneInfo
+
 from core.database import SessionLocal
 from core.repositories import FundRepository, ETFRepository
 from services.providers import TSETMCProvider
 from services.preprocessing import clean_fund_data
 
 logger = logging.getLogger(__name__)
+
 FUND_TYPES = [4, 5, 6, 7, 11, 12, 13, 14, 16, 17]
 
-# وهله‌سازی از پروایدر
+
+def iran_time():
+    return datetime.now(ZoneInfo("Asia/Tehran")).replace(tzinfo=None)
+
+
 market_provider = TSETMCProvider()
 
 def update_funds_data():
@@ -30,7 +38,7 @@ def update_funds_data():
                 
                 # استفاده از ریپازیتوری برای ذخیره در دیتابیس
                 fund_repo.upsert_fund(reg_no, clean_item['name'], f_type, clean_item)
-                fund_repo.add_fund_history(reg_no, clean_item['nav_stat'], clean_item['net_asset'])
+                fund_repo.add_fund_history(reg_no, clean_item['nav_stat'], clean_item['net_asset'], observed_at=iran_time())
                 total_updated += 1
                 
         db.commit()
@@ -68,7 +76,7 @@ def update_etf_market_data():
             }
             
             etf_repo.upsert_etf_market(ins_code, symbol, name, data)
-            etf_repo.add_etf_history(ins_code, data['last_price'], data['closing_price'])
+            etf_repo.add_etf_history(ins_code, data['last_price'], data['closing_price'], observed_at=iran_time())
             
         db.commit()
         logger.info(f"Successfully updated {len(etf_data)} ETF market prices.")

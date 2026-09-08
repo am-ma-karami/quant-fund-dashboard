@@ -42,3 +42,18 @@ class TSETMCProvider:
                 logger.warning(f"Provider Warning (fetch_live_etf_prices flow {flow}): {e}")
                 
         return results
+
+    def fetch_fund_history_detail(self, reg_no: int) -> list:
+        """گرفتن تاریخچه 90 روزه یک صندوق (Bootstrap)"""
+        url = f"{self.base_url}/Fund/GetFundInDetail/{reg_no}"
+        try:
+            response = requests.get(url, headers=self.headers, timeout=self.timeout)
+            response.raise_for_status()
+            data = response.json().get("fund", {})
+            # بورس تاریخچه را در کلید fundProfits یا مستقیما به عنوان آرایه برمی‌گرداند
+            # ساختار دقیق API برای تاریخچه NAV
+            history = data.get("fundProfits", []) if isinstance(data, dict) else []
+            return history
+        except Exception as e:
+            logger.warning(f"Provider Warning (fetch_fund_history {reg_no}): {e}")
+            return []

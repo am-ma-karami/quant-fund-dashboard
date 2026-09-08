@@ -57,7 +57,7 @@ def read_fund_detail(request: Request, reg_no: int, db: Session = Depends(get_db
     fund = repo.get_fund_by_reg_no(reg_no)
     histories = repo.get_fund_history(reg_no)
     
-    labels = [h.recorded_at.strftime('%H:%M') for h in histories]
+    labels = [h.observed_at.strftime('%H:%M') for h in histories]
     data = [h.nav_stat for h in histories]
     
     return templates.TemplateResponse("fund_detail.html", {
@@ -81,7 +81,7 @@ def read_etf_detail(request: Request, ins_code: str, db: Session = Depends(get_d
     etf = repo.get_etf_by_ins_code(ins_code)
     histories = repo.get_etf_history(ins_code)
     
-    labels = [h.recorded_at.strftime('%H:%M') for h in histories]
+    labels = [h.observed_at.strftime('%H:%M') for h in histories]
     data = [h.last_price for h in histories]
     
     return templates.TemplateResponse("etf_detail.html", {
@@ -107,7 +107,7 @@ def api_fund_chart(reg_no: int, db: Session = Depends(get_db)):
     fund = repo.get_fund_by_reg_no(reg_no)
     histories = repo.get_fund_history(reg_no)
     return {
-        "labels": [h.recorded_at.strftime('%H:%M') for h in histories],
+        "labels": [h.observed_at.strftime('%H:%M') for h in histories],
         "data": [h.nav_stat for h in histories],
         "nav_stat": fund.nav_stat, "nav_sub": fund.nav_sub, "nav_red": fund.nav_red,
         "last_updated": fund.last_updated.strftime('%Y-%m-%d %H:%M:%S')
@@ -119,36 +119,36 @@ def api_etf_chart(ins_code: str, db: Session = Depends(get_db)):
     etf = repo.get_etf_by_ins_code(ins_code)
     histories = repo.get_etf_history(ins_code)
     return {
-        "labels": [h.recorded_at.strftime('%H:%M') for h in histories],
+        "labels": [h.observed_at.strftime('%H:%M') for h in histories],
         "data": [h.last_price for h in histories],
         "last_price": etf.last_price, "closing_price": etf.closing_price,
         "last_updated": etf.last_updated.strftime('%Y-%m-%d %H:%M:%S')
     }
 
 
-@router.get("/etf-to-fund/{ins_code}")
-def redirect_etf_to_fund(ins_code: str, db: Session = Depends(get_db)):
-    """
-    موتور جستجوی هوشمند برای مپ کردن دیتای تابلوی معاملات به دیتای پورتفوی صندوق.
-    چون API بورس کلید مشترکی نمی‌دهد، ما بر اساس «نماد» در «نام صندوق» سرچ می‌کنیم.
-    """
-    repo = ETFRepository(db)
-    etf = repo.get_etf_by_ins_code(ins_code)
+# @router.get("/etf-to-fund/{ins_code}")
+# def redirect_etf_to_fund(ins_code: str, db: Session = Depends(get_db)):
+#     """
+#     موتور جستجوی هوشمند برای مپ کردن دیتای تابلوی معاملات به دیتای پورتفوی صندوق.
+#     چون API بورس کلید مشترکی نمی‌دهد، ما بر اساس «نماد» در «نام صندوق» سرچ می‌کنیم.
+#     """
+#     repo = ETFRepository(db)
+#     etf = repo.get_etf_by_ins_code(ins_code)
     
-    # اگر اصلا چنین کدی در تابلوی لایو ما نبود، برگرد به صفحه تابلو
-    if not etf:
-        return RedirectResponse(url="/etf-live")
+#     # اگر اصلا چنین کدی در تابلوی لایو ما نبود، برگرد به صفحه تابلو
+#     if not etf:
+#         return RedirectResponse(url="/etf-live")
         
-    # جستجو در جدول صندوق‌ها با استفاده از LIKE (یا ilike برای حساس نبودن به حروف)
-    # در SQLAlchemy معادل LIKE %symbol% همان متد contains است:
-    matched_fund = db.query(Fund).filter(Fund.name.contains(etf.symbol)).first()
+#     # جستجو در جدول صندوق‌ها با استفاده از LIKE (یا ilike برای حساس نبودن به حروف)
+#     # در SQLAlchemy معادل LIKE %symbol% همان متد contains است:
+#     matched_fund = db.query(Fund).filter(Fund.name.contains(etf.symbol)).first()
     
-    if matched_fund:
-        # اگر صندوق پیدا شد، کاربر را به صورت خودکار به صفحه داشبورد صندوق شوت کن
-        return RedirectResponse(url=f"/fund/{matched_fund.reg_no}")
-    else:
-        # اگر پیدا نشد (مثلا اسمش خیلی فرق داشت)، کاربر را بفرست به صفحه چارت ساده خود ETF
-        return RedirectResponse(url=f"/etf/{ins_code}")
+#     if matched_fund:
+#         # اگر صندوق پیدا شد، کاربر را به صورت خودکار به صفحه داشبورد صندوق شوت کن
+#         return RedirectResponse(url=f"/fund/{matched_fund.reg_no}")
+#     else:
+#         # اگر پیدا نشد (مثلا اسمش خیلی فرق داشت)، کاربر را بفرست به صفحه چارت ساده خود ETF
+#         return RedirectResponse(url=f"/etf/{ins_code}")
 
 
 @router.get("/api/market-pulse")

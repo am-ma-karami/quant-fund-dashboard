@@ -23,7 +23,7 @@ class FundRepository:
 
     def get_fund_history(self, reg_no: int, limit: int = 60):
         return self.db.query(FundHistory).filter(FundHistory.fund_reg_no == reg_no)\
-                      .order_by(FundHistory.recorded_at.asc()).limit(limit).all()
+                      .order_by(FundHistory.observed_at.asc()).limit(limit).all()
 
     def upsert_fund(self, reg_no: int, name: str, fund_type: int, clean_data: dict):
         """بروزرسانی یا ساخت صندوق جدید (Upsert)"""
@@ -51,8 +51,8 @@ class FundRepository:
         fund.last_updated = iran_time()
         return fund
 
-    def add_fund_history(self, reg_no: int, nav_stat: float, net_asset: float):
-        history = FundHistory(fund_reg_no=reg_no, nav_stat=nav_stat, net_asset=net_asset)
+    def add_fund_history(self, reg_no: int, nav_stat: float, net_asset: float,observed_at):
+        history = FundHistory(fund_reg_no=reg_no, nav_stat=nav_stat, net_asset=net_asset, observed_at=observed_at)        
         self.db.add(history)
 
     def get_heatmap_data(self, limit: int = 50):
@@ -66,6 +66,33 @@ class FundRepository:
     def get_all_funds_for_screener(self):
         """دریافت تمام صندوق‌ها برای صفحه فیلترنویسی"""
         return self.db.query(Fund).filter(Fund.net_asset > 0).all()
+
+    def get_latest_observation_time(self, reg_no: int):
+        """گرفتن آخرین زمان دیتای ثبت شده برای یک صندوق"""
+        latest = self.db.query(FundHistory).filter(FundHistory.fund_reg_no == reg_no)\
+                        .order_by(FundHistory.observed_at.desc()).first()
+        return latest.observed_at if latest else None
+
+    def upsert_fund_history(self, reg_no: int, nav_stat: float, net_asset: float, observed_at: datetime):
+        """منطق UPSERT: اگر بود آپدیت کن، اگر نبود بساز"""
+        history = self.db.query(FundHistory).filter(
+            FundHistory.fund_reg_no == reg_no,
+            FundHistory.observed_at == observed_at
+        ).first()
+        
+        if history:
+            # Correction: اگر دیتا در بورس اصلاح شده بود، ما هم آپدیت می‌کنیم
+            history.nav_stat = nav_stat
+            history.net_asset = net_asset
+        else:
+            # Insert
+            history = FundHistory(
+                fund_reg_no=reg_no,
+                nav_stat=nav_stat,
+                net_asset=net_asset,
+                observed_at=observed_at
+            )
+            self.db.add(history)
 
 
 class ETFRepository:
@@ -88,15 +115,15 @@ class ETFRepository:
         etf.last_updated = iran_time()
         return etf
 
-    def add_etf_history(self, ins_code: str, last_price: float, closing_price: float):
-        history = ETFMarketHistory(ins_code=ins_code, last_price=last_price, closing_price=closing_price)
+    def add_etf_history(self, ins_code: str, last_price: float, closing_price: float, observed_at):
+        history = ETFMarketHistory(ins_code=ins_code, last_price=last_price, closing_price=closing_price, observed_at=observed_at)
         self.db.add(history)
 
     def get_etf_by_ins_code(self, ins_code: str):
         return self.db.query(ETFMarket).filter(ETFMarket.ins_code == ins_code).first()
 
     def get_etf_history(self, ins_code: str, limit: int = 60):
-        return self.db.query(ETFMarketHistory).filter(ETFMarketHistory.ins_code == ins_code).order_by(ETFMarketHistory.recorded_at.asc()).limit(limit).all()
+        return self.db.query(ETFMarketHistory).filter(ETFMarketHistory.ins_code == ins_code).order_by(ETFMarketHistory.observed_at.asc()).limit(limit).all()
 
 
     def get_market_pulse(self):

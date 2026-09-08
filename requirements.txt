@@ -13,3 +13,5 @@ httpx==0.25.1
 
 redis==4.5.4
 fastapi-cache2[redis]==0.2.1
+
+python-dateutil==2.8.2

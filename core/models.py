@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey
+from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, UniqueConstraint
 from sqlalchemy.orm import relationship
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -31,7 +31,7 @@ class Fund(Base):
     portfolio_deposit = Column(Float, nullable=True)
     
     last_updated = Column(DateTime, default=iran_time)
-    histories = relationship("FundHistory", back_populates="fund", order_by="desc(FundHistory.recorded_at)")
+    histories = relationship("FundHistory", back_populates="fund", order_by="desc(FundHistory.observed_at)")
 
     @property
     def risk_profile(self):
@@ -50,12 +50,25 @@ class Fund(Base):
 
 class FundHistory(Base):
     __tablename__ = "fund_histories"
+    
     id = Column(Integer, primary_key=True, index=True)
     fund_reg_no = Column(Integer, ForeignKey("funds.reg_no"), index=True)
+    
     nav_stat = Column(Float, nullable=True)
     net_asset = Column(Float, nullable=True)
-    recorded_at = Column(DateTime, default=iran_time, index=True) 
+    
+    # زمانی که این دیتا در بورس ثبت شده (مثلا پایان روز کاری)
+    observed_at = Column(DateTime, nullable=False, index=True)
+    # زمانی که کرون‌جاب ما این دیتا را در دیتابیس خودمان ثبت کرد
+    created_at = Column(DateTime, default=iran_time) 
+    
     fund = relationship("Fund", back_populates="histories")
+
+    # جلوگیری از دیتای تکراری: برای هر صندوق در یک زمان مشخص، فقط یک رکورد
+    __table_args__ = (
+        UniqueConstraint('fund_reg_no', 'observed_at', name='uix_fund_observation'),
+    )
+
 
 class ETFMarket(Base):
     __tablename__ = "etf_market"
@@ -67,13 +80,16 @@ class ETFMarket(Base):
     price_change = Column(Float, nullable=True)
     total_trades = Column(Float, nullable=True)
     last_updated = Column(DateTime, default=iran_time)
-    histories = relationship("ETFMarketHistory", back_populates="etf", order_by="desc(ETFMarketHistory.recorded_at)")
+    histories = relationship("ETFMarketHistory", back_populates="etf", order_by="desc(ETFMarketHistory.observed_at)")
 
 class ETFMarketHistory(Base):
     __tablename__ = "etf_market_histories"
     id = Column(Integer, primary_key=True, index=True)
     ins_code = Column(String, ForeignKey("etf_market.ins_code"), index=True)
     last_price = Column(Float, nullable=True)
-    closing_price = Column(Float, nullable=True)
-    recorded_at = Column(DateTime, default=iran_time, index=True) 
+    closing_price = Column(Float, nullable=True)    
+    # زمانی که این دیتا در بورس ثبت شده (مثلا پایان روز کاری)
+    observed_at = Column(DateTime, nullable=False, index=True)
+    # زمانی که کرون‌جاب ما این دیتا را در دیتابیس خودمان ثبت کرد
+    created_at = Column(DateTime, default=iran_time) 
     etf = relationship("ETFMarket", back_populates="histories")

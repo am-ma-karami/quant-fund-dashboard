@@ -1,6 +1,6 @@
 import os
-import sys           # <--- اضافه شد
-import logging       # <--- اضافه شد
+import sys           
+import logging      
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -34,14 +34,14 @@ async def lifespan(app: FastAPI):
     update_etf_market_data()
     
     # راه‌اندازی زمان‌بند
-    scheduler = BackgroundScheduler()
-    scheduler.add_job(update_funds_data, 'interval', minutes=1)
-    scheduler.add_job(update_etf_market_data, 'interval', minutes=1)
-    scheduler.start()
+    # scheduler = BackgroundScheduler()
+    # scheduler.add_job(update_funds_data, 'interval', minutes=1)
+    # scheduler.add_job(update_etf_market_data, 'interval', minutes=1)
+    # scheduler.start()
     
     yield
     
-    scheduler.shutdown()
+    # scheduler.shutdown()
     await redis.close() 
 
 app = FastAPI(
