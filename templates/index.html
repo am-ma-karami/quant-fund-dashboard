@@ -1,17 +1,186 @@
 {% extends "base.html" %}
 {% block content %}
-<h4 class="mb-4 text-center">انواع صندوق‌های سرمایه‌گذاری</h4>
-<div class="row row-cols-1 row-cols-md-3 g-4">
-    {% for cat in categories %}
-    <div class="col">
-        <div class="card h-100 shadow-sm border-0">
-            <div class="card-body text-center">
-                <h5 class="card-title text-primary">{{ cat.name }}</h5>
-                <p class="card-text text-muted">مشاهده لیست صندوق‌های این دسته و وضعیت NAV لایو آنها</p>
-                <a href="/category/{{ cat.id }}" class="btn btn-outline-primary mt-2">مشاهده لیست</a>
+
+<!-- بخش 1: ترمینال فرماندهی (Command Center) -->
+<div class="bg-dark text-white p-4 rounded-3 mb-4 shadow-lg font-monospace" style="border: 1px solid #333;">
+    <!-- هدر ترمینال -->
+    <div class="d-flex justify-content-between align-items-center border-bottom border-secondary pb-3 mb-4">
+        <span class="fs-4 fw-bold text-info">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="currentColor" class="bi bi-terminal me-2" viewBox="0 0 16 16">
+                <path d="M6 9a.5.5 0 0 1 .5-.5h3a.5.5 0 0 1 0 1h-3A.5.5 0 0 1 6 9M3.854 4.146a.5.5 0 1 0-.708.708L4.793 6.5 3.146 8.146a.5.5 0 1 0 .708.708l2-2a.5.5 0 0 0 0-.708l-2-2z"/>
+                <path d="M2 1a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V3a2 2 0 0 0-2-2zm12 1a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H2a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1z"/>
+            </svg>
+            IRAN FUND TERMINAL
+        </span>
+        <span class="text-danger fw-bold pulse" style="letter-spacing: 2px;">
+            ● LIVE <span id="clock" class="text-white ms-2">--:--:--</span>
+        </span>
+    </div>
+
+    <!-- نبض بازار (Market Pulse) -->
+    <div class="row text-center g-4">
+        <div class="col-md-2 col-6">
+            <div class="text-secondary mb-1 small">Total Funds</div>
+            <div class="fs-3 fw-bold text-white" id="pulse_total">{{ pulse.total }}</div>
+        </div>
+        <div class="col-md-2 col-6 border-start border-secondary">
+            <div class="text-secondary mb-1 small">Positive</div>
+            <div class="fs-3 fw-bold text-success" id="pulse_positive">{{ pulse.positive }} ↑</div>
+        </div>
+        <div class="col-md-2 col-6 border-start border-secondary">
+            <div class="text-secondary mb-1 small">Negative</div>
+            <div class="fs-3 fw-bold text-danger" id="pulse_negative">{{ pulse.negative }} ↓</div>
+        </div>
+        <div class="col-md-2 col-6 border-start border-secondary">
+            <div class="text-secondary mb-1 small">Unchanged</div>
+            <div class="fs-3 fw-bold text-warning" id="pulse_unchanged">{{ pulse.unchanged }}</div>
+        </div>
+        <div class="col-md-4 col-12 border-start border-secondary text-start ps-4">
+            <div class="text-secondary mb-2 small">Market Breadth (Advancing / Total)</div>
+            <div class="d-flex justify-content-between text-white small mb-1">
+                <span id="breadth_text">{{ pulse.breadth }}%</span>
+            </div>
+            <div class="progress bg-secondary" style="height: 6px;">
+                <div id="breadth_bar" class="progress-bar bg-success" style="width: {{ pulse.breadth }}%"></div>
+            </div>
+
+            <div class="text-secondary mb-2 small mt-3">Up Volume / Total Volume</div>
+            <div class="d-flex justify-content-between text-white small mb-1">
+                <span id="vol_text">{{ pulse.up_volume_ratio }}%</span>
+                <span class="text-muted" id="total_trades_txt">Trades: {{ "{:,.0f}".format(pulse.total_trades) }}</span>
+            </div>
+            <div class="progress bg-secondary" style="height: 6px;">
+                <div id="vol_bar" class="progress-bar bg-info" style="width: {{ pulse.up_volume_ratio }}%"></div>
             </div>
         </div>
     </div>
+</div>
+
+<!-- بخش 2: نمودار تحلیلی 10 صندوق برتر -->
+<div class="card shadow-sm border-0 mb-5">
+    <div class="card-header bg-white">
+        <h5 class="mb-0 text-primary">تحلیل مقایسه‌ای: ۱۰ صندوق سهامی برتر (بازدهی ۳۰ روزه)</h5>
+    </div>
+    <div class="card-body">
+        <canvas id="bigPictureChart" height="80"></canvas>
+    </div>
+</div>
+
+<!-- بخش Heatmap (نقشه حرارتی بازار) -->
+<div class="card shadow-sm border-0 mb-5">
+    <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
+        <h5 class="mb-0">نقشه حرارتی بازار (Fund Heatmap)</h5>
+        <span class="badge bg-secondary">سایز: ارزش دارایی (AUM) | رنگ: بازدهی ۳۰ روزه</span>
+    </div>
+    <div class="card-body p-0">
+        <div id="heatmap-container" style="width: 100%; height: 400px;"></div>
+    </div>
+</div>
+
+<!-- بخش 3: دسته‌بندی‌ها -->
+<h4 class="mb-4 text-center border-top pt-4">دسترسی به پورتفوی صندوق‌ها بر اساس نوع</h4>
+<div class="row row-cols-1 row-cols-md-5 g-3">
+    {% for cat in categories %}
+    <div class="col">
+        <a href="/category/{{ cat.id }}" class="text-decoration-none">
+            <div class="card h-100 shadow-sm border-0 text-center bg-light table-hover">
+                <div class="card-body p-3">
+                    <h6 class="card-title text-dark mb-0">{{ cat.name }}</h6>
+                </div>
+            </div>
+        </a>
+    </div>
     {% endfor %}
 </div>
+
+<!-- اسکریپت‌ها -->
+<script>
+    // 1. ساعت لایو ترمینال (هر 1 ثانیه)
+    setInterval(() => {
+        document.getElementById('clock').innerText = new Date().toLocaleTimeString('fa-IR');
+    }, 1000);
+
+    // 2. آپدیت لایو دیتاهای ترمینال (هر 60 ثانیه بدون رفرش)
+    setInterval(() => {
+        fetch('/api/market-pulse')
+            .then(res => res.json())
+            .then(data => {
+                document.getElementById('pulse_total').innerText = data.total;
+                document.getElementById('pulse_positive').innerText = data.positive + ' ↑';
+                document.getElementById('pulse_negative').innerText = data.negative + ' ↓';
+                document.getElementById('pulse_unchanged').innerText = data.unchanged;
+                
+                document.getElementById('breadth_text').innerText = data.breadth + '%';
+                document.getElementById('breadth_bar').style.width = data.breadth + '%';
+                
+                document.getElementById('vol_text').innerText = data.up_volume_ratio + '%';
+                document.getElementById('vol_bar').style.width = data.up_volume_ratio + '%';
+                document.getElementById('total_trades_txt').innerText = 'Trades: ' + data.total_trades.toLocaleString();
+            })
+            .catch(err => console.error("Pulse update failed", err));
+    }, 60000);
+
+    // 3. رسم نمودار تصویر بزرگ
+    const ctx = document.getElementById('bigPictureChart').getContext('2d');
+    new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: {{ top_funds_names | safe }},
+            datasets: [{
+                label: 'بازدهی ۳۰ روزه (%)',
+                data: {{ top_funds_returns | safe }},
+                backgroundColor: 'rgba(54, 162, 235, 0.7)',
+                borderColor: 'rgba(54, 162, 235, 1)',
+                borderWidth: 1,
+                borderRadius: 4
+            }]
+        },
+        options: { responsive: true, scales: { y: { beginAtZero: true } } }
+    });
+
+// 4. رسم نقشه حرارتی (Treemap)
+    fetch('/api/heatmap')
+        .then(res => res.json())
+        .then(data => {
+            Highcharts.chart('heatmap-container', {
+                colorAxis: {
+                    min: -15, // کمترین بازدهی 
+                    max: 15,  // بیشترین بازدهی 
+                    stops: [
+                        [0, '#dc3545'],   // بازدهی منفی (قرمز)
+                        [0.5, '#f8f9fa'], // بازدهی صفر (خاکستری روشن/سفید)
+                        [1, '#198754']    // بازدهی مثبت (سبز)
+                    ]
+                },
+                series: [{
+                    type: 'treemap',
+                    layoutAlgorithm: 'squarified',
+                    data: data,
+                    // سفید کردن رنگ نوشته‌های داخل نقشه برای خوانایی بهتر
+                    dataLabels: {
+                        style: {
+                            color: '#FFFFFF',
+                            textOutline: '1px contrast'
+                        }
+                    },
+                    events: {
+                        click: function(event) {
+                            window.location.href = `/fund/${event.point.reg_no}`;
+                        }
+                    }
+                }],
+                title: { text: null },
+                tooltip: {
+                    useHTML: true,
+                    formatter: function() {
+                        return `<b>${this.point.name}</b><br>
+                                ارزش دارایی: ${(this.point.value / 10000000000).toFixed(0)} میلیارد تومان<br>
+                                بازدهی 30 روزه: <b style="color:${this.point.colorValue > 0 ? 'green' : 'red'}">
+                                ${this.point.colorValue}%</b>`;
+                    }
+                }
+            });
+        });
+        
+</script>
 {% endblock %}

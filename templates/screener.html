@@ -1,0 +1,167 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h3 class="text-primary fw-bold mb-0">سیستم فیلترنویسی صندوق‌ها (Fund Screener)</h3>
+    <span class="badge bg-secondary" id="result-count">بارگذاری...</span>
+</div>
+
+<div class="row mb-4">
+    <!-- بخش فیلترها -->
+    <div class="col-md-9">
+        <div class="card shadow-sm border-0 h-100">
+            <div class="card-header bg-light fw-bold">فیلترهای ترکیبی (Filters)</div>
+            <div class="card-body">
+                <div class="row g-3">
+                    <div class="col-md-4">
+                        <label class="form-label small">نوع صندوق:</label>
+                        <select id="filter-type" class="form-select form-select-sm" onchange="renderTable()">
+                            <option value="ALL">همه موارد</option>
+                            {% for cat in categories %}
+                            <option value="{{ cat.id }}">{{ cat.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label small">حداقل بازدهی ۳۰ روزه (%):</label>
+                        <input type="number" id="filter-return" class="form-control form-control-sm" value="-100" oninput="renderTable()">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label small">حداقل درصد سهام در پورتفو (%):</label>
+                        <input type="number" id="filter-stock" class="form-control form-control-sm" value="0" oninput="renderTable()">
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- بخش کاستوم کالمز (Custom Columns) -->
+    <div class="col-md-3">
+        <div class="card shadow-sm border-0 h-100">
+            <div class="card-header bg-light fw-bold">ستون‌های سفارشی</div>
+            <div class="card-body small">
+                <div class="form-check form-switch mb-1"><input class="form-check-input" type="checkbox" id="col-manager" checked onchange="renderTable()"><label class="form-check-label">مدیر صندوق</label></div>
+                <div class="form-check form-switch mb-1"><input class="form-check-input" type="checkbox" id="col-aum" checked onchange="renderTable()"><label class="form-check-label">ارزش دارایی (AUM)</label></div>
+                <div class="form-check form-switch mb-1"><input class="form-check-input" type="checkbox" id="col-return30" checked onchange="renderTable()"><label class="form-check-label">بازدهی ۳۰ روزه</label></div>
+                <div class="form-check form-switch mb-1"><input class="form-check-input" type="checkbox" id="col-return365" onchange="renderTable()"><label class="form-check-label">بازدهی ۱ ساله</label></div>
+                <div class="form-check form-switch"><input class="form-check-input" type="checkbox" id="col-stock" checked onchange="renderTable()"><label class="form-check-label">درصد سهام</label></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- بخش جدول نتایج -->
+<div class="card shadow-sm border-0">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover table-striped mb-0 text-center align-middle">
+                <thead class="table-dark" style="cursor: pointer;">
+                    <tr>
+                        <th onclick="handleSort('reg_no')">ثبت ↕</th>
+                        <th onclick="handleSort('name')">نام صندوق ↕</th>
+                        <th id="th-manager" onclick="handleSort('manager')">مدیر ↕</th>
+                        <th id="th-aum" onclick="handleSort('net_asset')">ارزش دارایی (ریال) ↕</th>
+                        <th id="th-return30" onclick="handleSort('day30_return')">بازدهی ۳۰ روزه ↕</th>
+                        <th id="th-return365" onclick="handleSort('day365_return')">بازدهی ۱ ساله ↕</th>
+                        <th id="th-stock" onclick="handleSort('portfolio_stock')">درصد سهام ↕</th>
+                        <th>عملیات</th>
+                    </tr>
+                </thead>
+                <tbody id="screener-tbody">
+                    <!-- توسط جاوااسکریپت پر می‌شود -->
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<script>
+    let allFunds = [];
+    let currentSort = { column: 'net_asset', asc: false }; // پیش‌فرض: مرتب‌سازی بر اساس دارایی به صورت نزولی
+
+    // 1. دریافت دیتای اولیه از API
+    fetch('/api/screener-data')
+        .then(res => res.json())
+        .then(data => {
+            allFunds = data;
+            renderTable(); // رندر اولیه
+        });
+
+    // 2. هندل کردن کلیک روی هدرها برای سورت
+    function handleSort(column) {
+        if (currentSort.column === column) {
+            currentSort.asc = !currentSort.asc; // برعکس کردن جهت سورت
+        } else {
+            currentSort.column = column;
+            currentSort.asc = false;
+        }
+        renderTable();
+    }
+
+    // 3. هسته اصلی: فیلتر، سورت و رندرینگ
+    function renderTable() {
+        // --- الف: گرفتن مقادیر فیلترها و ستون‌ها ---
+        const typeFilter = document.getElementById('filter-type').value;
+        const returnFilter = parseFloat(document.getElementById('filter-return').value) || -100;
+        const stockFilter = parseFloat(document.getElementById('filter-stock').value) || 0;
+
+        const showManager = document.getElementById('col-manager').checked;
+        const showAum = document.getElementById('col-aum').checked;
+        const showRet30 = document.getElementById('col-return30').checked;
+        const showRet365 = document.getElementById('col-return365').checked;
+        const showStock = document.getElementById('col-stock').checked;
+
+        // --- ب: مدیریت نمایش هدرهای ستون (Custom Columns) ---
+        document.getElementById('th-manager').style.display = showManager ? '' : 'none';
+        document.getElementById('th-aum').style.display = showAum ? '' : 'none';
+        document.getElementById('th-return30').style.display = showRet30 ? '' : 'none';
+        document.getElementById('th-return365').style.display = showRet365 ? '' : 'none';
+        document.getElementById('th-stock').style.display = showStock ? '' : 'none';
+
+        // --- ج: فیلتر کردن دیتا (Filter) ---
+        let filtered = allFunds.filter(f => {
+            let passType = (typeFilter === 'ALL') || (f.fund_type == typeFilter);
+            let passReturn = f.day30_return >= returnFilter;
+            let passStock = f.portfolio_stock >= stockFilter;
+            return passType && passReturn && passStock;
+        });
+
+        // --- د: سورت کردن دیتا (Sort) ---
+        filtered.sort((a, b) => {
+            let valA = a[currentSort.column];
+            let valB = b[currentSort.column];
+            if(valA < valB) return currentSort.asc ? -1 : 1;
+            if(valA > valB) return currentSort.asc ? 1 : -1;
+            return 0;
+        });
+
+        // --- ه: رندر کردن ردیف‌ها ---
+        const tbody = document.getElementById('screener-tbody');
+        tbody.innerHTML = '';
+        
+        filtered.forEach(f => {
+            let tr = document.createElement('tr');
+            
+            // رنگ‌بندی بازدهی‌ها
+            let ret30Color = f.day30_return > 0 ? 'text-success' : (f.day30_return < 0 ? 'text-danger' : '');
+            let ret365Color = f.day365_return > 0 ? 'text-success' : (f.day365_return < 0 ? 'text-danger' : '');
+
+            tr.innerHTML = `
+                <td>${f.reg_no}</td>
+                <td class="fw-bold text-primary">${f.name}</td>
+                <td style="display: ${showManager ? '' : 'none'}">${f.manager}</td>
+                <td class="fw-bold" style="display: ${showAum ? '' : 'none'}">${f.net_asset.toLocaleString()}</td>
+                <td dir="ltr" class="fw-bold ${ret30Color}" style="display: ${showRet30 ? '' : 'none'}">${f.day30_return}%</td>
+                <td dir="ltr" class="fw-bold ${ret365Color}" style="display: ${showRet365 ? '' : 'none'}">${f.day365_return}%</td>
+                <td style="display: ${showStock ? '' : 'none'}">
+                    <div class="progress" style="height: 15px;"><div class="progress-bar bg-info" style="width: ${f.portfolio_stock}%">${f.portfolio_stock}%</div></div>
+                </td>
+                <td><a href="/fund/${f.reg_no}" class="btn btn-sm btn-outline-primary">داشبورد</a></td>
+            `;
+            tbody.appendChild(tr);
+        });
+
+        // آپدیت کردن کانتر (تعداد نتایج)
+        document.getElementById('result-count').innerText = `${filtered.length} صندوق یافت شد`;
+    }
+</script>
+{% endblock %}

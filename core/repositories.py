@@ -52,6 +52,18 @@ class FundRepository:
         history = FundHistory(fund_reg_no=reg_no, nav_stat=nav_stat, net_asset=net_asset)
         self.db.add(history)
 
+    def get_heatmap_data(self, limit: int = 50):
+        """دریافت دیتای صندوق‌های بزرگ برای نقشه حرارتی"""
+        # فقط صندوق‌هایی که دیتای Asset و Return دارند را می‌گیریم
+        return self.db.query(Fund).filter(
+            Fund.net_asset > 0,
+            Fund.day30_return != None
+        ).order_by(Fund.net_asset.desc()).limit(limit).all()
+
+    def get_all_funds_for_screener(self):
+        """دریافت تمام صندوق‌ها برای صفحه فیلترنویسی"""
+        return self.db.query(Fund).filter(Fund.net_asset > 0).all()
+
 
 class ETFRepository:
     def __init__(self, db: Session):
@@ -82,3 +94,41 @@ class ETFRepository:
 
     def get_etf_history(self, ins_code: str, limit: int = 60):
         return self.db.query(ETFMarketHistory).filter(ETFMarketHistory.ins_code == ins_code).order_by(ETFMarketHistory.recorded_at.asc()).limit(limit).all()
+
+
+    def get_market_pulse(self):
+        """
+        محاسبه شاخص‌های کلان بازار (Market Pulse) بر اساس تابلوی لایو ETFها
+        """
+        etfs = self.db.query(ETFMarket).all()
+        total = len(etfs)
+        
+        if total == 0:
+            return {"total": 0, "positive": 0, "negative": 0, "unchanged": 0, 
+                    "total_trades": 0, "breadth": 0, "up_volume_ratio": 0}
+
+        positive = sum(1 for e in etfs if (e.price_change or 0) > 0)
+        negative = sum(1 for e in etfs if (e.price_change or 0) < 0)
+        unchanged = total - positive - negative
+        
+        # مجموع کل معاملات انجام شده در بازار
+        total_trades = sum((e.total_trades or 0) for e in etfs)
+        
+        # معاملاتی که روی صندوق‌های مثبت انجام شده (Up Volume Proxy)
+        up_trades = sum((e.total_trades or 0) for e in etfs if (e.price_change or 0) > 0)
+        
+        # محاسبه Breadth (درصد صندوق‌های مثبت نسبت به کل)
+        breadth = (positive / total) * 100
+        
+        # محاسبه Up Volume Ratio
+        up_volume_ratio = (up_trades / total_trades) * 100 if total_trades > 0 else 0
+        
+        return {
+            "total": total,
+            "positive": positive,
+            "negative": negative,
+            "unchanged": unchanged,
+            "total_trades": total_trades,
+            "breadth": round(breadth, 1),
+            "up_volume_ratio": round(up_volume_ratio, 1)
+        }

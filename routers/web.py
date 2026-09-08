@@ -2,7 +2,6 @@ from fastapi import APIRouter, Request, Depends
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 
-
 from fastapi.responses import RedirectResponse
 
 from core.database import get_db
@@ -20,18 +19,24 @@ FUND_CATEGORIES = {
 
 @router.get("/")
 def read_dashboard(request: Request, db: Session = Depends(get_db)):
-    repo = FundRepository(db)
+    fund_repo = FundRepository(db)
+    etf_repo = ETFRepository(db)
+    
     categories = [{"id": k, "name": v} for k, v in FUND_CATEGORIES.items()]
     
-    top_funds = repo.get_top_funds_by_return(limit=10)
+    top_funds = fund_repo.get_top_funds_by_return(limit=10)
     top_funds_names = [f.name for f in top_funds]
     top_funds_returns = [f.day30_return for f in top_funds]
+    
+    # دریافت دیتای نبض بازار
+    pulse = etf_repo.get_market_pulse()
     
     return templates.TemplateResponse("index.html", {
         "request": request, 
         "categories": categories,
         "top_funds_names": top_funds_names,
-        "top_funds_returns": top_funds_returns
+        "top_funds_returns": top_funds_returns,
+        "pulse": pulse 
     })
 
 @router.get("/category/{type_id}")
@@ -144,3 +149,53 @@ def redirect_etf_to_fund(ins_code: str, db: Session = Depends(get_db)):
     else:
         # اگر پیدا نشد (مثلا اسمش خیلی فرق داشت)، کاربر را بفرست به صفحه چارت ساده خود ETF
         return RedirectResponse(url=f"/etf/{ins_code}")
+
+
+@router.get("/api/market-pulse")
+def api_market_pulse(db: Session = Depends(get_db)):
+    """API برای آپدیت لایو داشبورد فرماندهی"""
+    repo = ETFRepository(db)
+    return repo.get_market_pulse()
+
+
+@router.get("/api/heatmap")
+def api_heatmap(db: Session = Depends(get_db)):
+    repo = FundRepository(db)
+    funds = repo.get_heatmap_data(limit=50)
+    
+    data = []
+    for f in funds:
+        # نام صندوق‌ها را کوتاه می‌کنیم تا در مربع‌های نقشه جا شوند
+        short_name = f.name.replace("صندوق سرمایه گذاری ", "").replace("صندوق ", "")[:15]
+        data.append({
+            "name": short_name,
+            "value": f.net_asset,            # تعیین کننده سایز مربع
+            "colorValue": f.day30_return,    # تعیین کننده رنگ مربع
+            "reg_no": f.reg_no               # برای لینک دادن
+        })
+    return data
+
+
+# مسیر باز کردن صفحه Screener
+@router.get("/screener")
+def read_screener(request: Request):
+    categories = [{"id": k, "name": v} for k, v in FUND_CATEGORIES.items()]
+    return templates.TemplateResponse("screener.html", {"request": request, "categories": categories})
+
+# مسیر API بهینه شده و کش شده برای دیتای Screener
+@router.get("/api/screener-data")
+def api_screener_data(db: Session = Depends(get_db)):
+    repo = FundRepository(db)
+    funds = repo.get_all_funds_for_screener()
+    
+    return [{
+        "reg_no": f.reg_no,
+        "name": f.name,
+        "fund_type": f.fund_type,
+        "manager": f.manager or "نامشخص",
+        "net_asset": f.net_asset or 0,
+        "nav_stat": f.nav_stat or 0,
+        "day30_return": f.day30_return or 0,
+        "day365_return": f.day365_return or 0,
+        "portfolio_stock": f.portfolio_stock or 0
+    } for f in funds]
