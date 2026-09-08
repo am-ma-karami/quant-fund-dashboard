@@ -38,7 +38,18 @@ def update_funds_data():
                 
                 # استفاده از ریپازیتوری برای ذخیره در دیتابیس
                 fund_repo.upsert_fund(reg_no, clean_item['name'], f_type, clean_item)
-                fund_repo.add_fund_history(reg_no, clean_item['nav_stat'], clean_item['net_asset'], observed_at=iran_time())
+                record_date_str = item.get("recordDate")
+
+                if record_date_str:
+                    observed_at = parser.parse(record_date_str)
+
+                    fund_repo.upsert_fund_history(
+                        reg_no=reg_no,
+                        nav_stat=clean_item["nav_stat"],
+                        net_asset=clean_item["net_asset"],
+                        observed_at=observed_at,
+                    )
+
                 total_updated += 1
                 
         db.commit()

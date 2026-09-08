@@ -19,17 +19,28 @@ def bootstrap_fund_history(db, fund_repo, reg_no: int):
     logger.info(f"Bootstrapping history for Fund {reg_no}...")
     history_data = provider.fetch_fund_history_detail(reg_no)
     
-    # فقط 90 روز آخر
+    if not history_data:
+        return
+
+    # فقط 90 رکورد آخر (90 روز)
     for item in history_data[:90]:
         try:
-            observed_at = parser.parse(item.get("recordDate"))
+            # زمان ثبت دیتا در بورس
+            record_date = item.get("recordDate")
+            if not record_date:
+                continue
+                
+            observed_at = parser.parse(record_date)
+            
+            # ذخیره در دیتابیس با مکانیزم UPSERT
             fund_repo.upsert_fund_history(
                 reg_no=reg_no,
-                nav_stat=item.get("navStat", 0),
-                net_asset=item.get("netAsset", 0),
+                nav_stat=item.get("navStat") or 0.0,
+                net_asset=item.get("netAsset") or 0.0,
                 observed_at=observed_at
             )
         except Exception as e:
+            logger.debug(f"Error parsing history row for fund {reg_no}: {e}")
             continue
 
 def sync_funds_pipeline():

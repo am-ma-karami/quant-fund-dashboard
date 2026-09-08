@@ -54,20 +54,44 @@ def read_category(request: Request, type_id: int, db: Session = Depends(get_db))
     })
 
 @router.get("/fund/{reg_no}")
-def read_fund_detail(request: Request, reg_no: int, db: Session = Depends(get_db)):
+def read_fund_detail(
+    request: Request,
+    reg_no: int,
+    db: Session = Depends(get_db)
+):
     repo = FundRepository(db)
+
     fund = repo.get_fund_by_reg_no(reg_no)
+
+    if fund is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Fund {reg_no} not found"
+        )
+
     histories = repo.get_fund_history(reg_no)
-    
-    labels = [h.observed_at.strftime('%H:%M') for h in histories]
-    data = [h.nav_stat for h in histories]
-    
-    return templates.TemplateResponse("fund_detail.html", {
-        "request": request, 
-        "fund": fund,
-        "labels": labels,
-        "data": data
-    })
+
+    labels = [
+        h.observed_at.strftime("%H:%M")
+        for h in histories
+        if h.observed_at is not None
+    ]
+
+    data = [
+        h.nav_stat
+        for h in histories
+        if h.observed_at is not None
+    ]
+
+    return templates.TemplateResponse(
+        "fund_detail.html",
+        {
+            "request": request,
+            "fund": fund,
+            "labels": labels,
+            "data": data,
+        }
+    )
 
 @router.get("/etf-live")
 def read_etf_live(request: Request, db: Session = Depends(get_db)):

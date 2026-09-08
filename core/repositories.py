@@ -52,7 +52,7 @@ class FundRepository:
         return fund
 
     def add_fund_history(self, reg_no: int, nav_stat: float, net_asset: float,observed_at=None):
-        history = FundHistory(fund_reg_no=reg_no, nav_stat=nav_stat, net_asset=net_asset, بobserved_at=observed_at or iran_time())        
+        history = FundHistory(fund_reg_no=reg_no, nav_stat=nav_stat, net_asset=net_asset, observed_at=observed_at or iran_time())        
         self.db.add(history)
 
     def get_heatmap_data(self, limit: int = 50):
