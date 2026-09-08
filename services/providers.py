@@ -11,7 +11,8 @@ class TSETMCProvider:
         self.headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
         }
-        self.timeout = 10
+        # افزایش Timeout برای اینترنت‌های ناپایدار
+        self.timeout = 15
 
     def fetch_funds_by_type(self, fund_type: int) -> list:
         url = f"{self.base_url}/Fund/GetFunds/{fund_type}"
@@ -20,15 +21,24 @@ class TSETMCProvider:
             response.raise_for_status()
             return response.json().get("funds", [])
         except Exception as e:
-            logger.error(f"Provider Error (fetch_funds_by_type {fund_type}): {e}")
+            logger.warning(f"Provider Warning (fetch_funds_by_type {fund_type}): {e}")
             return []
 
     def fetch_live_etf_prices(self) -> list:
-        url = f"{self.base_url}/ClosingPrice/GetTradeTop/ETF/0/9999"
-        try:
-            response = requests.get(url, headers=self.headers, timeout=self.timeout)
-            response.raise_for_status()
-            return response.json().get("tradeTop", [])
-        except Exception as e:
-            logger.error(f"Provider Error (fetch_live_etf_prices): {e}")
-            return []
+        """
+        برای جلوگیری از ارور 502 در سرور بورس، 
+        به جای flow=0، دیتای بورس (1) و فرابورس (2) را جداگانه می‌گیریم و ترکیب می‌کنیم.
+        """
+        results = []
+        # 1: بازار بورس ، 2: بازار فرابورس
+        for flow in [1, 2]:
+            url = f"{self.base_url}/ClosingPrice/GetTradeTop/ETF/{flow}/9999"
+            try:
+                response = requests.get(url, headers=self.headers, timeout=self.timeout)
+                response.raise_for_status()
+                data = response.json().get("tradeTop", [])
+                results.extend(data)
+            except Exception as e:
+                logger.warning(f"Provider Warning (fetch_live_etf_prices flow {flow}): {e}")
+                
+        return results

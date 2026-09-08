@@ -12,25 +12,29 @@
     </div>
     <div class="text-end">
         <div class="small text-muted">آخرین بروزرسانی</div>
-        <div class="fw-bold">{{ fund.last_updated.strftime('%Y-%m-%d %H:%M:%S') }}</div>
+        <!-- اضافه شدن id برای آپدیت لایو -->
+        <div class="fw-bold" id="last_updated">{{ fund.last_updated.strftime('%Y-%m-%d %H:%M:%S') }}</div>
     </div>
 </div>
 
 <div class="row">
-    <!-- ستون سمت راست: اطلاعات قیمتی و بازدهی -->
+    <!-- ستون سمت راست: اطلاعات قیمتی -->
     <div class="col-md-4">
         <!-- کارت قیمت‌ها -->
         <div class="card shadow-sm border-0 mb-4">
-            <div class="card-header bg-light"><strong>اطلاعات قیمتی (ریال)</strong></div>
+            <div class="card-header bg-light d-flex justify-content-between">
+                <strong>اطلاعات قیمتی (ریال)</strong>
+                <span class="badge bg-success pulse">LIVE</span>
+            </div>
             <ul class="list-group list-group-flush">
                 <li class="list-group-item d-flex justify-content-between align-items-center">
-                    NAV آماری: <span class="fw-bold text-dark">{{ "{:,.0f}".format(fund.nav_stat) if fund.nav_stat else "-" }}</span>
+                    NAV آماری: <span class="fw-bold text-dark" id="nav_stat">{{ "{:,.0f}".format(fund.nav_stat) if fund.nav_stat else "-" }}</span>
                 </li>
                 <li class="list-group-item d-flex justify-content-between align-items-center">
-                    قیمت صدور: <span class="fw-bold text-success">{{ "{:,.0f}".format(fund.nav_sub) if fund.nav_sub else "-" }}</span>
+                    قیمت صدور: <span class="fw-bold text-success" id="nav_sub">{{ "{:,.0f}".format(fund.nav_sub) if fund.nav_sub else "-" }}</span>
                 </li>
                 <li class="list-group-item d-flex justify-content-between align-items-center">
-                    قیمت ابطال: <span class="fw-bold text-danger">{{ "{:,.0f}".format(fund.nav_red) if fund.nav_red else "-" }}</span>
+                    قیمت ابطال: <span class="fw-bold text-danger" id="nav_red">{{ "{:,.0f}".format(fund.nav_red) if fund.nav_red else "-" }}</span>
                 </li>
                 <li class="list-group-item d-flex justify-content-between align-items-center bg-light">
                     خالص دارایی‌ها:<span class="fw-bold">{{ "{:,.0f}".format(fund.net_asset) if fund.net_asset else "-" }}</span>
@@ -67,9 +71,8 @@
         </div>
     </div>
     
-    <!-- ستون سمت چپ: نمودار و ترکیب دارایی -->
+    <!-- ستون سمت چپ: نمودار -->
     <div class="col-md-8">
-        <!-- نمودار -->
         <div class="card shadow-sm border-0 mb-4">
             <div class="card-header bg-light">
                 <strong>نمودار تغییرات لحظه‌ای NAV</strong>
@@ -88,7 +91,7 @@
                         <span>سهام ({{ fund.portfolio_stock or 0 }}%)</span>
                     </div>
                     <div class="progress" style="height: 10px;">
-                        <div class="progress-bar bg-primary" role="progressbar" style="width: {{ fund.portfolio_stock or 0 }}%"></div>
+                        <div class="progress-bar bg-primary" style="width: {{ fund.portfolio_stock or 0 }}%"></div>
                     </div>
                 </div>
                 <div class="mb-3">
@@ -96,15 +99,15 @@
                         <span>اوراق با درآمد ثابت ({{ fund.portfolio_bond or 0 }}%)</span>
                     </div>
                     <div class="progress" style="height: 10px;">
-                        <div class="progress-bar bg-info" role="progressbar" style="width: {{ fund.portfolio_bond or 0 }}%"></div>
+                        <div class="progress-bar bg-info" style="width: {{ fund.portfolio_bond or 0 }}%"></div>
                     </div>
                 </div>
                 <div class="mb-2">
                     <div class="d-flex justify-content-between small mb-1">
-                        <span>سپرده بانکی / نقد ({{ fund.portfolio_deposit or 0 }}%)</span>
+                        <span>سپرده بانکی ({{ fund.portfolio_deposit or 0 }}%)</span>
                     </div>
                     <div class="progress" style="height: 10px;">
-                        <div class="progress-bar bg-warning" role="progressbar" style="width: {{ fund.portfolio_deposit or 0 }}%"></div>
+                        <div class="progress-bar bg-warning" style="width: {{ fund.portfolio_deposit or 0 }}%"></div>
                     </div>
                 </div>
             </div>
@@ -113,17 +116,15 @@
 </div>
 
 <script>
+    // 1. مقداردهی اولیه نمودار
     const ctx = document.getElementById('navChart').getContext('2d');
-    const labels = {{ labels | safe }};
-    const data = {{ data | safe }};
-    
-    new Chart(ctx, {
+    const chart = new Chart(ctx, {
         type: 'line',
         data: {
-            labels: labels,
+            labels: {{ labels | safe }},
             datasets: [{
                 label: 'NAV Stat',
-                data: data,
+                data: {{ data | safe }},
                 borderColor: '#0d6efd',
                 backgroundColor: 'rgba(13, 110, 253, 0.1)',
                 borderWidth: 2,
@@ -141,5 +142,26 @@
             }
         }
     });
+
+    // 2. سیستم آپدیت خودکار (AJAX Polling) هر 60 ثانیه
+    setInterval(() => {
+        fetch('/api/fund/{{ fund.reg_no }}/chart')
+            .then(res => res.json())
+            .then(data => {
+                // بروزرسانی آرایه‌های نمودار (اضافه شدن نقطه‌های جدید)
+                chart.data.labels = data.labels;
+                chart.data.datasets[0].data = data.data;
+                chart.update(); // رفرش کردن بصری نمودار
+                
+                // بروزرسانی قیمت‌های متنی روی صفحه با فرمت سه‌رقم سه‌رقم
+                document.getElementById('nav_stat').innerText = data.nav_stat ? data.nav_stat.toLocaleString() : "-";
+                document.getElementById('nav_sub').innerText = data.nav_sub ? data.nav_sub.toLocaleString() : "-";
+                document.getElementById('nav_red').innerText = data.nav_red ? data.nav_red.toLocaleString() : "-";
+                
+                // آپدیت ساعت
+                document.getElementById('last_updated').innerText = data.last_updated;
+            })
+            .catch(err => console.error("Error updating fund data:", err));
+    }, 60000);
 </script>
 {% endblock %}

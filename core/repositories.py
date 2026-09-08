@@ -2,6 +2,11 @@ from sqlalchemy.orm import Session
 from core.models import Fund, FundHistory, ETFMarket, ETFMarketHistory
 from datetime import datetime
 
+from zoneinfo import ZoneInfo
+
+def iran_time():
+    return datetime.now(ZoneInfo("Asia/Tehran")).replace(tzinfo=None)
+
 class FundRepository:
     def __init__(self, db: Session):
         self.db = db
@@ -40,7 +45,7 @@ class FundRepository:
         fund.portfolio_bond = clean_data['portfolio_bond']
         fund.portfolio_deposit = clean_data['portfolio_deposit']
         fund.fund_type = fund_type
-        fund.last_updated = datetime.utcnow()
+        fund.last_updated = iran_time()
         return fund
 
     def add_fund_history(self, reg_no: int, nav_stat: float, net_asset: float):
@@ -65,9 +70,15 @@ class ETFRepository:
         etf.closing_price = data['closing_price']
         etf.price_change = data['price_change']
         etf.total_trades = data['total_trades']
-        etf.last_updated = datetime.utcnow()
+        etf.last_updated = iran_time()
         return etf
 
     def add_etf_history(self, ins_code: str, last_price: float, closing_price: float):
         history = ETFMarketHistory(ins_code=ins_code, last_price=last_price, closing_price=closing_price)
         self.db.add(history)
+
+    def get_etf_by_ins_code(self, ins_code: str):
+        return self.db.query(ETFMarket).filter(ETFMarket.ins_code == ins_code).first()
+
+    def get_etf_history(self, ins_code: str, limit: int = 60):
+        return self.db.query(ETFMarketHistory).filter(ETFMarketHistory.ins_code == ins_code).order_by(ETFMarketHistory.recorded_at.asc()).limit(limit).all()

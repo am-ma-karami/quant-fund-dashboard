@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="mb-3">
+    <a href="/etf-live" class="btn btn-outline-secondary btn-sm">&larr; بازگشت به تابلوی ETF</a>
+</div>
+<div class="d-flex justify-content-between align-items-end mb-4 border-bottom pb-3">
+    <div>
+        <h3 class="text-primary fw-bold mb-1">{{ etf.symbol }} <span class="badge bg-danger fs-6 pulse">LIVE</span></h3>
+        <span class="text-muted small">{{ etf.name }}</span>
+    </div>
+    <div class="text-end">
+        <div class="small text-muted">آخرین بروزرسانی (تهران)</div>
+        <div class="fw-bold" id="last_updated">{{ etf.last_updated.strftime('%Y-%m-%d %H:%M:%S') }}</div>
+    </div>
+</div>
+<div class="row">
+    <div class="col-md-4">
+        <div class="card shadow-sm border-0 mb-4">
+            <div class="card-header bg-light"><strong>اطلاعات تابلوی معاملات (ریال)</strong></div>
+            <ul class="list-group list-group-flush">
+                <li class="list-group-item d-flex justify-content-between align-items-center">
+                    آخرین معامله:<span class="fw-bold text-success" id="last_price">{{ "{:,.0f}".format(etf.last_price) }}</span>
+                </li>
+                <li class="list-group-item d-flex justify-content-between align-items-center">
+                    قیمت پایانی:<span class="fw-bold text-dark" id="closing_price">{{ "{:,.0f}".format(etf.closing_price) }}</span>
+                </li>
+            </ul>
+        </div>
+    </div>
+    <div class="col-md-8">
+        <div class="card shadow-sm border-0 mb-4">
+            <div class="card-header bg-light"><strong>نمودار تغییرات لحظه‌ای آخرین معامله</strong></div>
+            <div class="card-body">
+                <canvas id="etfChart" height="120"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    const ctx = document.getElementById('etfChart').getContext('2d');
+    const chart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: {{ labels | safe }},
+            datasets: [{ label: 'قیمت آخرین معامله', data: {{ data | safe }}, borderColor: '#dc3545', backgroundColor: 'rgba(220, 53, 69, 0.1)', borderWidth: 2, fill: true }]
+        },
+        options: { responsive: true, plugins: { legend: { display: false } } }
+    });
+
+    // آپدیت خودکار چارت بدون رفرش
+    setInterval(() => {
+        fetch('/api/etf/{{ etf.ins_code }}/chart')
+            .then(res => res.json())
+            .then(data => {
+                chart.data.labels = data.labels;
+                chart.data.datasets[0].data = data.data;
+                chart.update();
+                document.getElementById('last_price').innerText = data.last_price.toLocaleString();
+                document.getElementById('closing_price').innerText = data.closing_price.toLocaleString();
+                document.getElementById('last_updated').innerText = data.last_updated;
+            });
+    }, 60000);
+</script>
+{% endblock %}
