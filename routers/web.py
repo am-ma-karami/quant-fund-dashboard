@@ -190,6 +190,14 @@ def api_market_pulse(db: Session = Depends(get_db)):
     return repo.get_market_pulse()
 
 
+@router.get("/api/dashboard/market-pulse")
+@cache(expire=15)
+def api_dashboard_market_pulse(db: Session = Depends(get_db)):
+    """Alias for /api/market-pulse for dashboard compatibility"""
+    repo = ETFRepository(db)
+    return repo.get_market_pulse()
+
+
 @router.get("/api/dashboard/top-funds")
 @cache(expire=30)
 def api_top_funds(

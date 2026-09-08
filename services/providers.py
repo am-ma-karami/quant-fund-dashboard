@@ -1,9 +1,47 @@
 import logging
 import time
 import requests
+from threading import Lock
 
 
 logger = logging.getLogger(__name__)
+
+
+class CircuitBreaker:
+    def __init__(self, failure_threshold: int = 10, cooldown: int = 30):
+        self.failure_threshold = failure_threshold
+        self.cooldown = cooldown
+        self.failures = 0
+        self.last_failure_time = 0
+        self._lock = Lock()
+        self.is_open = False
+
+    def record_success(self):
+        with self._lock:
+            self.failures = 0
+            self.is_open = False
+
+    def record_failure(self):
+        with self._lock:
+            self.failures += 1
+            self.last_failure_time = time.time()
+            if self.failures >= self.failure_threshold:
+                self.is_open = True
+                logger.warning("Circuit breaker OPENED after %s failures", self.failures)
+
+    def can_execute(self) -> bool:
+        with self._lock:
+            if not self.is_open:
+                return True
+            if time.time() - self.last_failure_time > self.cooldown:
+                self.is_open = False
+                self.failures = 0
+                logger.info("Circuit breaker CLOSED (cooldown elapsed)")
+                return True
+            return False
+
+
+_circuit_breaker = CircuitBreaker(failure_threshold=5, cooldown=60)
 
 
 def request_with_retry(
@@ -11,9 +49,14 @@ def request_with_retry(
     *,
     headers: dict = None,
     params: dict = None,
-    timeout: int = 10,
+    timeout: int = 30,
     retries: int = 3,
 ):
+    logger.debug("Circuit breaker state: is_open=%s, failures=%s", _circuit_breaker.is_open, _circuit_breaker.failures)
+    if not _circuit_breaker.can_execute():
+        logger.warning("Circuit breaker open - skipping request to %s (failures=%s)", url, _circuit_breaker.failures)
+        raise requests.RequestException("Circuit breaker open - service unavailable")
+
     last_error = None
 
     for attempt in range(retries):
@@ -26,11 +69,15 @@ def request_with_retry(
             )
 
             response.raise_for_status()
+            _circuit_breaker.record_success()
 
             return response
 
         except requests.RequestException as exc:
             last_error = exc
+            _circuit_breaker.record_failure()
+
+            logger.warning("Request attempt %s/%s failed for %s: %s (circuit breaker failures=%s)", attempt + 1, retries, url, exc, _circuit_breaker.failures)
 
             if attempt == retries - 1:
                 break
@@ -58,7 +105,7 @@ class TSETMCProvider:
             "Accept": "application/json",
         }
 
-        self.timeout = 10
+        self.timeout = 30
         self.max_retries = 3
 
     def fetch_funds_by_type(self, fund_type: int) -> list:
@@ -125,11 +172,19 @@ class TSETMCProvider:
                 timeout=self.timeout,
                 retries=self.max_retries,
             )
-            data = response.json().get("fund", {})
+            data = response.json()
+            logger.info("Fund %s history detail response keys: %s", reg_no, list(data.keys()) if isinstance(data, dict) else type(data))
+            if isinstance(data, dict) and "fund" in data:
+                fund_obj = data["fund"]
+                logger.info("Fund %s fund object keys: %s", reg_no, list(fund_obj.keys()) if isinstance(fund_obj, dict) else type(fund_obj))
+                if isinstance(fund_obj, dict) and "stats" in fund_obj:
+                    logger.info("Fund %s stats length: %s", reg_no, len(fund_obj["stats"]))
         except requests.RequestException:
             logger.exception("Failed to fetch history for fund %s", reg_no)
             return []
 
-        history = data.get("fundProfits", [])
+        history = data.get("fund", {}).get("stats", [])
+
+        logger.info("Fund %s fetched %s history records", reg_no, len(history))
 
         return history

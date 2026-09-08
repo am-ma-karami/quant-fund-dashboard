@@ -18,8 +18,10 @@ class FundRepository:
         return self.db.query(Fund).filter(Fund.fund_type == type_id).order_by(Fund.net_asset.desc()).all()
 
     def get_top_funds_by_return(self, limit: int = 10):
-        return self.db.query(Fund).filter(Fund.fund_type == 6, Fund.day30_return != None)\
-                      .order_by(Fund.day30_return.desc()).limit(limit).all()
+        # Show top funds across all types that have return data
+        return self.db.query(Fund).filter(
+            Fund.day30_return != None
+        ).order_by(Fund.day30_return.desc()).limit(limit).all()
 
     def get_fund_history(self, reg_no: int, limit: int = 90):
         rows = (
@@ -90,6 +92,52 @@ class FundRepository:
             .filter(FundHistory.fund_reg_no == reg_no)
             .first()
             is not None
+        )
+
+    def get_history_count(self, reg_no: int) -> int:
+        return (
+            self.db.query(FundHistory)
+            .filter(FundHistory.fund_reg_no == reg_no)
+            .count()
+        )
+
+    def get_history_by_date(self, reg_no: int, observed_at: datetime):
+        return (
+            self.db.query(FundHistory)
+            .filter(
+                FundHistory.fund_reg_no == reg_no,
+                FundHistory.observed_at == observed_at
+            )
+            .first()
+        )
+
+    def get_funds_with_insufficient_history(self, min_days: int = 5, limit: int = 20):
+        """صندوق‌هایی که تاریخچه ندارند یا آخرین رکوردشان قدیمی است"""
+        from datetime import timedelta
+        from sqlalchemy import func
+        cutoff_date = datetime.utcnow() - timedelta(days=min_days)
+        
+        # Subquery: latest history date per fund
+        subq = (
+            self.db.query(
+                FundHistory.fund_reg_no,
+                func.max(FundHistory.observed_at).label('latest_date')
+            )
+            .group_by(FundHistory.fund_reg_no)
+            .subquery()
+        )
+        
+        # Funds with no history OR latest record older than min_days
+        return (
+            self.db.query(Fund)
+            .outerjoin(subq, Fund.reg_no == subq.c.fund_reg_no)
+            .filter(
+                Fund.net_asset > 0,
+                (subq.c.latest_date < cutoff_date) | (subq.c.latest_date.is_(None))
+            )
+            .order_by(Fund.net_asset.desc())
+            .limit(limit)
+            .all()
         )
 
     def upsert_fund_history(self, reg_no: int, nav_stat: float, net_asset: float, observed_at: datetime):
