@@ -23,6 +23,14 @@ class Fund(Base):
     nav_red = Column(Float, nullable=True)
     units = Column(Float, nullable=True)
     manager = Column(String, nullable=True)
+
+    provider = Column(String, default="TSETMC")
+    symbol = Column(String, nullable=True)
+    sector = Column(String, nullable=True)
+    subsector = Column(String, nullable=True)
+    market = Column(String, nullable=True)
+    instrument_status = Column(String, nullable=True)
+
     day1_return = Column(Float, nullable=True)
     day7_return = Column(Float, nullable=True)
     day180_return = Column(Float, nullable=True)
@@ -119,6 +127,13 @@ class ETFMarket(Base):
     max_drawdown = Column(Float, nullable=True)
 
     last_updated = Column(DateTime, default=iran_time)
+
+    provider = Column(String, default="TSETMC")
+    sector = Column(String, nullable=True)
+    subsector = Column(String, nullable=True)
+    market = Column(String, nullable=True)
+    instrument_status = Column(String, nullable=True)
+
     histories = relationship(
         "ETFMarketHistory",
         back_populates="etf",
@@ -197,3 +212,23 @@ class SyncStatus(Base):
     provider = Column(String, default="TSETMC")
 
     error_message = Column(String, nullable=True)
+
+    quality_score = Column(Float, nullable=True)
+
+
+class BenchmarkHistory(Base):
+    __tablename__ = "benchmark_histories"
+
+    id = Column(Integer, primary_key=True, index=True)
+    benchmark_code = Column(String, nullable=False, index=True)
+    benchmark_name = Column(String, nullable=False)
+    value = Column(Float, nullable=False)
+    observed_at = Column(DateTime, nullable=False, index=True)
+
+    __table_args__ = (
+        UniqueConstraint(
+            "benchmark_code",
+            "observed_at",
+            name="uix_benchmark_observation",
+        ),
+    )

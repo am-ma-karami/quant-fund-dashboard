@@ -1,6 +1,9 @@
 from pytest import approx
 
-from services.etf_analytics import calculate_premium_discount
+from services.etf_analytics import (
+    calculate_premium_discount,
+    calculate_premium_zscore,
+)
 
 
 def test_positive_premium():
@@ -27,3 +30,17 @@ def test_invalid_nav():
 
 def test_missing_price():
     assert calculate_premium_discount(None, 100) is None
+
+
+def test_premium_zscore():
+    score = calculate_premium_zscore(
+        12,
+        [8, 9, 10, 11],
+    )
+
+    assert score is not None
+    assert score > 0
+
+
+def test_premium_zscore_insufficient():
+    assert calculate_premium_zscore(12, [8]) is None

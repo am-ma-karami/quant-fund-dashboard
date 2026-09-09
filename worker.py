@@ -20,13 +20,25 @@ logger = logging.getLogger("WORKER")
 Base.metadata.create_all(bind=engine)
 
 
+STOCK_FUND_TYPE = 6
+
+
 def run_fund_sync():
     try:
-        logger.info("Starting fund sync...")
+        logger.info("Starting all fund sync...")
         sync_funds_pipeline()
-        logger.info("Fund sync completed.")
+        logger.info("All fund sync completed.")
     except Exception:
-        logger.exception("Fund sync failed.")
+        logger.exception("All fund sync failed.")
+
+
+def run_stock_fund_sync():
+    try:
+        logger.info("Starting stock fund sync...")
+        sync_funds_pipeline(fund_types=[STOCK_FUND_TYPE])
+        logger.info("Stock fund sync completed.")
+    except Exception:
+        logger.exception("Stock fund sync failed.")
 
 
 def run_etf_sync():
@@ -57,13 +69,13 @@ if __name__ == "__main__":
     scheduler = BlockingScheduler()
 
     scheduler.add_job(
-        run_fund_sync,
+        run_stock_fund_sync,
         "interval",
-        minutes=5,
-        id="fund_sync",
+        minutes=1,
+        id="stock_fund_sync",
         max_instances=1,
         coalesce=True,
-        misfire_grace_time=120,
+        misfire_grace_time=60,
     )
 
     scheduler.add_job(

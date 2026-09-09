@@ -162,7 +162,12 @@ def backfill_single_fund():
             return
 
         # ۳. ذخیره 90 روز آخر
-        for item in history_data[:90]:
+        sorted_history = sorted(
+            history_data,
+            key=lambda item: item.get("recordDate") or ""
+        )
+
+        for item in sorted_history[-90:]:
             record_date = item.get("recordDate")
             if not record_date: 
                 continue

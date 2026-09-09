@@ -33,6 +33,18 @@
                     <span class="text-secondary">CLOSING</span>
                     <span class="fs-5" id="closing_price">{{ "{:,.0f}".format(etf.closing_price) if etf.closing_price else "-" }}</span>
                 </div>
+                <div class="d-flex justify-content-between mb-3">
+                    <span class="text-secondary">NAV</span>
+                    <span class="fs-5 text-primary" id="nav">{{ "{:,.0f}".format(etf.nav) if etf.nav else "-" }}</span>
+                </div>
+                <div class="d-flex justify-content-between mb-3">
+                    <span class="text-secondary">SUBSCRIPTION NAV</span>
+                    <span class="fs-5 text-success" id="nav_sub">{{ "{:,.0f}".format(etf.nav_sub) if etf.nav_sub else "-" }}</span>
+                </div>
+                <div class="d-flex justify-content-between mb-3">
+                    <span class="text-secondary">REDEMPTION NAV</span>
+                    <span class="fs-5 text-danger" id="nav_red">{{ "{:,.0f}".format(etf.nav_red) if etf.nav_red else "-" }}</span>
+                </div>
                 <div class="d-flex justify-content-between">
                     <span class="text-secondary">TRADES</span>
                     <span class="text-warning" id="total_trades">{{ "{:,.0f}".format(etf.total_trades) if etf.total_trades else "-" }}</span>
@@ -48,9 +60,13 @@
                     <span class="small">ارزش ذاتی (NAV):</span>
                     <span class="fw-bold text-primary" id="nav_stat">-</span>
                 </div>
-                <div class="d-flex justify-content-between align-items-center">
+                <div class="d-flex justify-content-between align-items-center mb-2">
                     <span class="small">وضعیت حباب:</span>
                     <span class="badge fs-6" id="premium_badge">-</span>
+                </div>
+                <div class="d-flex justify-content-between align-items-center">
+                    <span class="small">Premium Z-Score:</span>
+                    <span class="fw-bold" id="premium_zscore">-</span>
                 </div>
             </div>
         </div>
@@ -64,6 +80,14 @@
             </div>
             <div class="card-body">
                 <canvas id="etfChart" height="130"></canvas>
+            </div>
+        </div>
+        <div class="card shadow-sm border-0 mb-4">
+            <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                <strong class="text-dark">Premium / Discount (Intraday)</strong>
+            </div>
+            <div class="card-body">
+                <canvas id="premiumChart" height="100"></canvas>
             </div>
         </div>
     </div>
@@ -137,6 +161,9 @@
                 document.getElementById('closing_price').innerText = data.closing_price ? data.closing_price.toLocaleString() : "-";
                 document.getElementById('total_trades').innerText = data.total_trades ? data.total_trades.toLocaleString() : "-";
                 document.getElementById('last_updated').innerText = data.last_updated;
+                document.getElementById('nav').innerText = data.nav ? data.nav.toLocaleString() + " ریال" : "-";
+                document.getElementById('nav_sub').innerText = data.nav_sub ? data.nav_sub.toLocaleString() + " ریال" : "-";
+                document.getElementById('nav_red').innerText = data.nav_red ? data.nav_red.toLocaleString() + " ریال" : "-";
                 
                 // آپدیت باکس حباب
                 document.getElementById('nav_stat').innerText = data.nav ? data.nav.toLocaleString() + " ریال" : "نامشخص";
@@ -147,6 +174,15 @@
                 } else {
                     badge.innerText = "نامشخص";
                     badge.className = "badge bg-secondary p-2";
+                }
+
+                let zscoreEl = document.getElementById('premium_zscore');
+                if(data.premium_zscore !== null && data.premium_zscore !== undefined) {
+                    zscoreEl.innerText = data.premium_zscore.toFixed(2);
+                    zscoreEl.className = data.premium_zscore > 0 ? "fw-bold text-danger" : "fw-bold text-success";
+                } else {
+                    zscoreEl.innerText = "-";
+                    zscoreEl.className = "fw-bold text-muted";
                 }
             });
     }

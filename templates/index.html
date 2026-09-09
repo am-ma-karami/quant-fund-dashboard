@@ -70,8 +70,8 @@
             <div class="fs-4 fw-bold text-white" id="dq_received">-</div>
         </div>
         <div class="col-md-3 col-6 border-start border-secondary">
-            <div class="text-secondary mb-1 small">Coverage</div>
-            <div class="fs-4 fw-bold text-info" id="dq_coverage">-</div>
+            <div class="text-secondary mb-1 small">Quality Score</div>
+            <div class="fs-4 fw-bold text-info" id="dq_quality">-</div>
         </div>
     </div>
 </div>
@@ -119,5 +119,46 @@
     setInterval(() => {
         document.getElementById('clock').innerText = new Date().toLocaleTimeString('fa-IR');
     }, 1000);
+
+    // 2. آپدیت داده‌های کیفیت داده
+    function updateDataQuality() {
+        fetch('/api/health/data')
+            .then(res => res.json())
+            .then(data => {
+                const statusEl = document.getElementById('dq_status');
+                if (data.status === 'healthy') {
+                    statusEl.innerText = 'HEALTHY';
+                    statusEl.className = 'fs-5 fw-bold text-success';
+                } else if (data.status === 'partial') {
+                    statusEl.innerText = 'PARTIAL';
+                    statusEl.className = 'fs-5 fw-bold text-warning';
+                } else {
+                    statusEl.innerText = data.status || 'UNKNOWN';
+                    statusEl.className = 'fs-5 fw-bold text-muted';
+                }
+
+                document.getElementById('dq_expected').innerText = data.expected_funds || 0;
+                document.getElementById('dq_received').innerText = data.received_funds || 0;
+
+                const qualityEl = document.getElementById('dq_quality');
+                if (data.quality_score !== null && data.quality_score !== undefined) {
+                    qualityEl.innerText = data.quality_score.toFixed(1) + ' / 100';
+                    if (data.quality_score >= 98) {
+                        qualityEl.className = 'fs-4 fw-bold text-success';
+                    } else if (data.quality_score >= 95) {
+                        qualityEl.className = 'fs-4 fw-bold text-info';
+                    } else if (data.quality_score >= 90) {
+                        qualityEl.className = 'fs-4 fw-bold text-warning';
+                    } else {
+                        qualityEl.className = 'fs-4 fw-bold text-danger';
+                    }
+                } else {
+                    qualityEl.innerText = '-';
+                    qualityEl.className = 'fs-4 fw-bold text-muted';
+                }
+            });
+    }
+    updateDataQuality();
+    setInterval(updateDataQuality, 30000);
 </script>
 {% endblock %}

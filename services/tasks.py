@@ -120,6 +120,18 @@ def update_etf_market_data():
             )
             
             etf_repo.upsert_etf_market(ins_code, symbol, name, data)
+            etf = etf_repo.get_etf_by_ins_code(ins_code)
+
+            if etf and (not etf.symbol or not etf.sector):
+                identity = market_provider.fetch_instrument_identity(ins_code)
+
+                if identity:
+                    etf.symbol = identity.get("symbol") or identity.get("lVal18AFC")
+                    etf.sector = identity.get("sector") or identity.get("sectorName")
+                    etf.subsector = identity.get("subSector") or identity.get("subSectorName")
+                    etf.market = identity.get("market")
+                    etf.instrument_status = identity.get("status")
+
             etf_repo.add_etf_history(ins_code, data, observed_at=iran_time())
             
         db.commit()

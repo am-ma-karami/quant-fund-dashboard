@@ -6,8 +6,10 @@ from sqlalchemy import text
 from datetime import timedelta
 
 from core.database import get_db
-from core.repositories import FundRepository, ETFRepository, iran_time
-from core.models import Fund, ETFMarket
+from core.repositories import FundRepository, ETFRepository, BenchmarkRepository, iran_time
+from core.models import Fund, ETFMarket, BenchmarkHistory
+from services.analytics import active_return, cumulative_return
+from services.etf_analytics import calculate_premium_zscore
 
 router = APIRouter()
 templates = Jinja2Templates(directory="templates")
@@ -153,6 +155,26 @@ def api_fund_chart(reg_no: int, db: Session = Depends(get_db)):
 
     risk_metrics = repo.get_fund_risk_metrics(reg_no)
 
+    benchmark_repo = BenchmarkRepository(db)
+    benchmark_history = benchmark_repo.get_history(
+        "32097828799138957",
+        limit=252,
+    )
+
+    benchmark_return = None
+    if len(benchmark_history) >= 2:
+        benchmark_prices = [b.value for b in benchmark_history]
+        benchmark_return = cumulative_return(benchmark_prices)
+
+    fund_return = None
+    if fund.day365_return is not None:
+        fund_return = fund.day365_return / 100.0
+
+    active_return_value = active_return(
+        fund_return,
+        benchmark_return,
+    )
+
     return {
         "fund": {
             "reg_no": fund.reg_no,
@@ -167,6 +189,12 @@ def api_fund_chart(reg_no: int, db: Session = Depends(get_db)):
             )
         },
         "risk": risk_metrics,
+        "performance": {
+            "return_30d": fund.day30_return,
+            "return_90d": fund.day90_return,
+            "return_365d": fund.day365_return,
+            "active_return": active_return_value,
+        },
         "history": chart_history,
         "window_start": cutoff.isoformat(),
         "has_changes_in_window": bool(recent_histories),
@@ -187,6 +215,16 @@ def api_etf_chart(ins_code: str, db: Session = Depends(get_db)):
     # گرفتن تاریخچه نوسانات امروز
     histories = repo.get_etf_history(ins_code)
 
+    historical_premiums = repo.get_recent_premiums(
+        ins_code,
+        limit=60,
+    )
+
+    premium_zscore = calculate_premium_zscore(
+        etf.premium_discount,
+        historical_premiums,
+    )
+
     return {
         "labels": [h.observed_at.strftime('%H:%M') for h in histories],
         "data": [h.last_price for h in histories],
@@ -201,7 +239,10 @@ def api_etf_chart(ins_code: str, db: Session = Depends(get_db)):
         "price_first": etf.price_first,
         "price_yesterday": etf.price_yesterday,
         "nav": etf.nav,
+        "nav_sub": etf.nav_sub,
+        "nav_red": etf.nav_red,
         "premium": etf.premium_discount,
+        "premium_zscore": premium_zscore,
         "last_updated": etf.last_updated.strftime('%H:%M:%S') if etf.last_updated else ""
     }
 
@@ -361,6 +402,7 @@ def api_data_quality(
         ),
         "latency_ms": status.duration_ms,
         "provider": status.provider or "TSETMC",
+        "quality_score": status.quality_score,
     }
 
 

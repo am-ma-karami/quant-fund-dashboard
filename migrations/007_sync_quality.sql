@@ -1,0 +1,2 @@
+ALTER TABLE sync_status
+ADD COLUMN IF NOT EXISTS quality_score DOUBLE PRECISION;

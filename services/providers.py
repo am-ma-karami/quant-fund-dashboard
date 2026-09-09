@@ -232,11 +232,14 @@ class TSETMCProvider:
         ins_code: str,
         days: int = 365,
     ) -> list:
-        """دریافت تاریخچه قیمت روزانه ETF."""
+        """دریافت تاریخچه روزانه ETF و محدودکردن آن به پنجره زمانی واقعی."""
+        from datetime import timedelta
+        from dateutil import parser
+
         url = (
             f"{self.base_url}/ClosingPrice/"
             f"GetClosingPriceDailyList/"
-            f"{ins_code}/{days}"
+            f"{ins_code}/0"
         )
 
         try:
@@ -257,7 +260,31 @@ class TSETMCProvider:
         if not isinstance(data, dict):
             return []
 
-        return data.get("closingPriceDaily", [])
+        records = data.get("closingPriceDaily", [])
+
+        if not isinstance(records, list):
+            return []
+
+        cutoff = iran_time() - timedelta(days=days)
+
+        filtered = []
+
+        for item in records:
+            record_date = item.get("dEven") or item.get("recordDate")
+            if not record_date:
+                continue
+
+            try:
+                observed_at = parser.parse(str(record_date)).replace(tzinfo=None)
+            except (TypeError, ValueError, OverflowError):
+                continue
+
+            if observed_at >= cutoff:
+                filtered.append((observed_at, item))
+
+        filtered.sort(key=lambda x: x[0])
+
+        return [item for _, item in filtered]
 
     def fetch_fund_history_detail(self, reg_no: int) -> list:
         """گرفتن تاریخچه صندوق برای bootstrap/backfill."""
@@ -274,7 +301,7 @@ class TSETMCProvider:
             logger.info("Fund %s history detail response keys: %s", reg_no, list(data.keys()) if isinstance(data, dict) else type(data))
             if isinstance(data, dict) and "fund" in data:
                 fund_obj = data["fund"]
-                logger.info("Fund %s fund object keys: %s", reg_no, list(fund_obj.keys()) if isinstance(fund_obj, dict) else type(fund_obj))
+                logger.info("Fund %s fund object keys: %s", reg_no, list(fund_obj.keys()) if isinstance(fund_obj, dict) else type(data))
                 if isinstance(fund_obj, dict) and "stats" in fund_obj:
                     logger.info("Fund %s stats length: %s", reg_no, len(fund_obj["stats"]))
         except requests.RequestException:
@@ -286,3 +313,92 @@ class TSETMCProvider:
         logger.info("Fund %s fetched %s history records", reg_no, len(history))
 
         return history
+
+    def fetch_index_history(
+        self,
+        index_code: str,
+    ) -> list:
+        url = (
+            f"{self.base_url}/Index/"
+            f"GetIndexB2History/{index_code}"
+        )
+
+        try:
+            response = request_with_retry(
+                url,
+                headers=self.headers,
+                timeout=self.timeout,
+                retries=self.max_retries,
+            )
+            data = response.json()
+        except requests.RequestException:
+            logger.exception(
+                "Failed to fetch index history %s",
+                index_code,
+            )
+            return []
+
+        if not isinstance(data, dict):
+            return []
+
+        return data.get("indexB2", [])
+
+    def fetch_instrument_identity(
+        self,
+        ins_code: str,
+    ) -> dict | None:
+        url = (
+            f"{self.base_url}/Instrument/"
+            f"GetInstrumentIdentity/{ins_code}"
+        )
+
+        try:
+            response = request_with_retry(
+                url,
+                headers=self.headers,
+                timeout=self.timeout,
+                retries=self.max_retries,
+            )
+            data = response.json()
+        except requests.RequestException:
+            logger.exception(
+                "Failed to fetch instrument identity %s",
+                ins_code,
+            )
+            return None
+
+        if not isinstance(data, dict):
+            return None
+
+        return data.get("instrumentIdentity")
+
+    def fetch_instrument_state(
+        self,
+        ins_code: str,
+        date_str: str,
+    ) -> dict | None:
+        url = (
+            f"{self.base_url}/MarketData/"
+            f"GetInstrumentState/{ins_code}/{date_str}"
+        )
+
+        try:
+            response = request_with_retry(
+                url,
+                headers=self.headers,
+                timeout=self.timeout,
+                retries=self.max_retries,
+            )
+            data = response.json()
+        except requests.RequestException:
+            logger.exception(
+                "Failed to fetch instrument state %s",
+                ins_code,
+            )
+            return None
+
+        if not isinstance(data, dict):
+            return None
+
+        return data.get("instrumentState")
+

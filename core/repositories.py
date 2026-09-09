@@ -1,5 +1,5 @@
 from sqlalchemy.orm import Session
-from core.models import Fund, FundHistory, HistoryBackfillState, ETFMarket, ETFMarketHistory
+from core.models import Fund, FundHistory, HistoryBackfillState, ETFMarket, ETFMarketHistory, BenchmarkHistory
 from services.risk import returns_from_prices, annualized_volatility, sharpe_ratio, maximum_drawdown
 from datetime import datetime
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -376,6 +376,32 @@ class ETFRepository:
         return self.db.query(ETFMarketHistory).filter(ETFMarketHistory.ins_code == ins_code).order_by(ETFMarketHistory.observed_at.asc()).limit(limit).all()
 
 
+    def get_recent_premiums(
+        self,
+        ins_code: str,
+        limit: int = 60,
+    ) -> list[float]:
+        rows = (
+            self.db.query(
+                ETFMarketHistory.premium_discount
+            )
+            .filter(
+                ETFMarketHistory.ins_code == ins_code,
+                ETFMarketHistory.premium_discount.isnot(None),
+            )
+            .order_by(
+                ETFMarketHistory.observed_at.desc()
+            )
+            .limit(limit)
+            .all()
+        )
+
+        return [
+            row[0]
+            for row in reversed(rows)
+        ]
+
+
     def get_market_pulse(self):
         """
         محاسبه شاخص‌های کلان بازار (Market Pulse) بر اساس تابلوی لایو ETFها
@@ -412,3 +438,50 @@ class ETFRepository:
             "breadth": round(breadth, 1),
             "up_volume_ratio": round(up_volume_ratio, 1)
         }
+
+
+class BenchmarkRepository:
+    def __init__(self, db: Session):
+        self.db = db
+
+    def upsert_history(
+        self,
+        benchmark_code: str,
+        benchmark_name: str,
+        value: float,
+        observed_at: datetime,
+    ):
+        stmt = pg_insert(BenchmarkHistory).values(
+            benchmark_code=benchmark_code,
+            benchmark_name=benchmark_name,
+            value=value,
+            observed_at=observed_at,
+        )
+
+        stmt = stmt.on_conflict_do_update(
+            index_elements=[
+                "benchmark_code",
+                "observed_at",
+            ],
+            set_=dict(
+                value=stmt.excluded.value,
+                benchmark_name=stmt.excluded.benchmark_name,
+            ),
+        )
+
+        self.db.execute(stmt)
+
+    def get_history(
+        self,
+        benchmark_code: str,
+        limit: int = 252,
+    ):
+        return (
+            self.db.query(BenchmarkHistory)
+            .filter(
+                BenchmarkHistory.benchmark_code == benchmark_code
+            )
+            .order_by(BenchmarkHistory.observed_at.asc())
+            .limit(limit)
+            .all()
+        )

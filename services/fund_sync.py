@@ -7,14 +7,19 @@ from core.models import SyncStatus
 from services.providers import TSETMCProvider
 from services.preprocessing import clean_fund_data
 from services.cache_service import invalidate_dashboard_cache
-from services.data_quality import calculate_coverage
+from services.data_quality import calculate_coverage, calculate_quality_score
 
 logger = logging.getLogger(__name__)
 provider = TSETMCProvider()
 FUND_TYPES = [4, 5, 6, 7, 11, 12, 13, 14, 16, 17]
 
 
-def sync_funds_pipeline():
+def sync_funds_pipeline(
+    fund_types: list[int] | None = None,
+):
+    if fund_types is None:
+        fund_types = FUND_TYPES
+
     logger.info("Starting Data Pipeline Sync...")
 
     db = SessionLocal()
@@ -28,7 +33,7 @@ def sync_funds_pipeline():
         total_valid = 0
         total_failed = 0
 
-        for f_type in FUND_TYPES:
+        for f_type in fund_types:
             logger.info(
                 "Fetching funds for category %s",
                 f_type
@@ -64,6 +69,18 @@ def sync_funds_pipeline():
                         clean_item
                     )
 
+                    fund = fund_repo.get_fund_by_reg_no(reg_no)
+
+                    if fund and (not fund.symbol or not fund.sector):
+                        identity = provider.fetch_instrument_identity(reg_no)
+
+                        if identity:
+                            fund.symbol = identity.get("symbol") or identity.get("lVal18AFC")
+                            fund.sector = identity.get("sector") or identity.get("sectorName")
+                            fund.subsector = identity.get("subSector") or identity.get("subSectorName")
+                            fund.market = identity.get("market")
+                            fund.instrument_status = identity.get("status")
+
                     record_date_str = item.get("recordDate")
 
                     if record_date_str:
@@ -95,6 +112,13 @@ def sync_funds_pipeline():
             received=total_received,
         )
 
+        quality_score = calculate_quality_score(
+            expected=total_expected,
+            received=total_received,
+            valid=total_valid,
+            failed=total_failed,
+        )
+
         status = db.query(SyncStatus).filter(
             SyncStatus.job_name == "fund_sync"
         ).first()
@@ -110,6 +134,7 @@ def sync_funds_pipeline():
         status.valid_count = total_valid
         status.updated_count = total_valid
         status.failed_count = total_failed
+        status.quality_score = quality_score
         status.duration_ms = int((datetime.utcnow() - started_at).total_seconds() * 1000)
         status.last_success_at = datetime.utcnow() if total_failed == 0 else status.last_success_at
         status.provider = "TSETMC"
