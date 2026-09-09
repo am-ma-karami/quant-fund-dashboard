@@ -78,9 +78,9 @@
     <!-- HISTORY BACKFILL PROGRESS -->
     <div class="row text-center g-4 mt-3 border-top border-secondary pt-3">
         <div class="col-12">
-            <div class="text-secondary mb-2 small">HISTORY BACKFILL (30 DAYS)</div>
+            <div class="text-secondary mb-2 small">HISTORY BACKFILL (90 DAYS)</div>
             <div class="d-flex justify-content-between align-items-center mb-1">
-                <span class="small text-muted">Completed</span>
+                <span class="small text-muted">Complete</span>
                 <span class="small text-muted">Missing</span>
             </div>
             <div class="progress bg-secondary" style="height: 20px;">
@@ -90,6 +90,10 @@
             <div class="d-flex justify-content-between mt-1">
                 <span class="small text-success" id="backfill_complete_text">-</span>
                 <span class="small text-danger" id="backfill_missing_text">-</span>
+            </div>
+            <div class="d-flex justify-content-between mt-2 small text-muted">
+                <span id="backfill_total_records">Total records: -</span>
+                <span id="backfill_funds_with_history">Funds with history: -</span>
             </div>
         </div>
     </div>
@@ -200,6 +204,13 @@
                     missingBar.style.width = '0%';
                     completeText.innerText = 'No funds';
                     missingText.innerText = '-';
+                }
+
+                const totalRecordsEl = document.getElementById('backfill_total_records');
+                const fundsWithHistoryEl = document.getElementById('backfill_funds_with_history');
+                if (totalRecordsEl && fundsWithHistoryEl) {
+                    totalRecordsEl.innerText = 'Total records: ' + (data.total_records || 0);
+                    fundsWithHistoryEl.innerText = 'Funds with history: ' + (data.funds_with_any_history || 0);
                 }
             });
     }

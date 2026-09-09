@@ -7,7 +7,7 @@ from datetime import timedelta
 
 from core.database import get_db
 from core.repositories import FundRepository, ETFRepository, BenchmarkRepository, iran_time
-from core.models import Fund, ETFMarket, BenchmarkHistory
+from core.models import Fund, FundHistory, ETFMarket, BenchmarkHistory
 from services.analytics import active_return, cumulative_return
 from services.etf_analytics import calculate_premium_zscore
 
@@ -441,23 +441,38 @@ def api_data_quality(
 
 @router.get("/api/dashboard/history-backfill")
 def api_history_backfill_progress(db: Session = Depends(get_db)):
-    from datetime import timedelta
-    from core.repositories import FundRepository, iran_time
+    from sqlalchemy import func
+    from core.repositories import FundRepository
 
     repo = FundRepository(db)
-    cutoff = iran_time() - timedelta(days=30)
-    complete, total = repo.get_history_backfill_progress(
-        target_records=30,
-        since=cutoff,
+
+    eligible = db.query(Fund).filter(Fund.net_asset > 0)
+    total_eligible = eligible.count()
+
+    history_query = db.query(
+        FundHistory.fund_reg_no,
+        func.count(FundHistory.id).label("hist_count"),
+    ).group_by(FundHistory.fund_reg_no).subquery()
+
+    complete = (
+        eligible.outerjoin(history_query, Fund.reg_no == history_query.c.fund_reg_no)
+        .filter(func.coalesce(history_query.c.hist_count, 0) >= 90)
+        .count()
     )
-    missing = total - complete
-    pct = (complete / total * 100) if total else 0
+
+    total_records = db.query(func.count(FundHistory.id)).scalar() or 0
+    funds_with_any_history = db.query(func.count(func.distinct(FundHistory.fund_reg_no))).scalar() or 0
+
+    missing = total_eligible - complete
+    pct = (complete / total_eligible * 100) if total_eligible else 0
 
     return {
-        "total": total,
+        "total": total_eligible,
         "complete": complete,
         "missing": missing,
         "percentage": round(pct, 1),
+        "total_records": total_records,
+        "funds_with_any_history": funds_with_any_history,
     }
 
 
