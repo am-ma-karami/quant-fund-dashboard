@@ -73,3 +73,6 @@ Icon
 .coverage
 htmlcov/
 .pytest_cache/
+# Database dumps
+backups/
+*.sql.bak

@@ -1,0 +1,16 @@
+.git
+.gitignore
+.env
+.env.*
+!.env.example
+backups/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+htmlcov/
+postgres_data/
+*.log
+.DS_Store
+.vscode/
+.idea/

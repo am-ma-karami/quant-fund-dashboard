@@ -1,8 +1,7 @@
-version: '3.8'
-
 services:
   db:
     image: postgres:15
+    restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
@@ -30,6 +29,7 @@ services:
 
   web:
     build: .
+    restart: unless-stopped
     command: uvicorn main:app --host 0.0.0.0 --port 8000
     volumes:
       - .:/app
@@ -57,6 +57,7 @@ services:
 
   worker:
     build: .
+    restart: unless-stopped
     command: python worker.py
     volumes:
       - .:/app
