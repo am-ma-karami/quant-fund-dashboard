@@ -21,8 +21,7 @@
                 </thead>
                 <tbody id="etf-tbody">
                     {% for etf in etfs %}
-                        <tr style="cursor: pointer;" onclick="window.location.href='/etf/{{ etf.ins_code }}'">
-                        <td class="fw-bold text-primary">{{ etf.symbol }}</td>
+                        <tr style="cursor: pointer;" onclick="window.location.href='/etf/{{ etf.ins_code }}'">                        <td class="fw-bold text-primary">{{ etf.symbol }}</td>
                         <td class="small">{{ etf.name }}</td>
                         <td class="fw-bold">{{ "{:,.0f}".format(etf.last_price) if etf.last_price else "-" }}</td>
                         <td>{{ "{:,.0f}".format(etf.closing_price) if etf.closing_price else "-" }}</td>

@@ -1,4 +1,5 @@
 import logging
+import time
 from datetime import timedelta
 
 from dateutil import parser
@@ -6,6 +7,14 @@ from dateutil import parser
 from core.database import SessionLocal
 from core.repositories import FundRepository, iran_time
 from services.providers import TSETMCProvider
+
+from sqlalchemy import func
+from core.database import SessionLocal
+from core.repositories import FundRepository
+from core.models import Fund, FundHistory
+from dateutil import parser
+import logging
+
 
 
 logger = logging.getLogger(__name__)
@@ -108,93 +117,68 @@ def bootstrap_fund_history(reg_no: int, days: int = HISTORY_DAYS):
         db.close()
 
 
-def backfill_single_fund(
-    history_days: int = HISTORY_DAYS,
-    initial_records: int = INITIAL_HISTORY_RECORDS,
-):
+
+def backfill_single_fund():
     """
-    Backfill one fund per run. Every fund first receives a few recent records;
-    only then are all funds completed up to the configured history window.
+    پیدا کردن خودکار یک صندوق که تاریخچه ناقص دارد (کمتر از 90 روز)
+    و تکمیل دیتای آن از طریق API بورس.
     """
     db = SessionLocal()
-    repo = FundRepository(db)
-
+    fund_repo = FundRepository(db)
+    
+    # مقداردهی اولیه برای اینکه در بخش except خطای NameError نگیریم
+    reg_no = "نامشخص" 
+    
     try:
-        cutoff = iran_time() - timedelta(days=history_days)
-        fund, phase = repo.get_next_history_backfill_fund(
-            initial_records=initial_records,
-            target_records=history_days,
-        )
-        completed, total = repo.get_history_backfill_progress(history_days, since=cutoff)
-        covered, _ = repo.get_history_backfill_progress(1, since=cutoff)
-        if not fund:
-            logger.info(
-                "History backfill complete: %s/%s funds have %s recent records",
-                completed, total, history_days,
+        # ۱. کوئری هوشمند برای پیدا کردن صندوقی که تاریخچه ندارد یا ناقص است
+        # شمردن تعداد رکوردهای هیستوری برای هر صندوق
+        subquery = db.query(
+            FundHistory.fund_reg_no, 
+            func.count(FundHistory.id).label('history_count')
+        ).group_by(FundHistory.fund_reg_no).subquery()
+        
+        # پیدا کردن صندوقی که یا هیستوری ندارد (None) یا تعدادش کمتر از 90 است
+        fund_to_backfill = db.query(Fund).outerjoin(
+            subquery, Fund.reg_no == subquery.c.fund_reg_no
+        ).filter(
+            (subquery.c.history_count == None) | (subquery.c.history_count < 90)
+        ).first()
+        
+        if not fund_to_backfill:
+            logger.info("All funds have complete 90-day history. Nothing to backfill.")
+            return
+
+        # ۲. استخراج reg_no و گرفتن دیتا از API
+        reg_no = fund_to_backfill.reg_no
+        logger.info(f"Backfilling history for Fund {reg_no}...")
+        
+        history_data = provider.fetch_fund_history_detail(reg_no)
+        
+        if not history_data:
+            logger.warning(f"No history data returned for Fund {reg_no}")
+            return
+
+        # ۳. ذخیره 90 روز آخر
+        for item in history_data[:90]:
+            record_date = item.get("recordDate")
+            if not record_date: 
+                continue
+            
+            observed_at = parser.parse(record_date)
+            
+            fund_repo.upsert_fund_history(
+                reg_no=reg_no,
+                nav_stat=item.get("navStat") or 0.0,
+                net_asset=item.get("netAsset") or 0.0,
+                observed_at=observed_at
             )
-            return False
-
-        record_limit = initial_records if phase == "initial" else history_days
-        logger.info(
-            "History backfill [%s]: fund %s (historical coverage %s/%s; 30-day completion %s/%s; %s records now)",
-            phase, fund.reg_no, covered, total, completed, total, repo.get_history_count(fund.reg_no, since=cutoff),
-        )
-
-        history_data = provider.fetch_fund_history_detail(
-            fund.reg_no
-        )
-
-        history_records, source_mode = _history_records_for_backfill(
-            history_data, history_days, record_limit
-        )
-        if not history_records:
-            repo.mark_history_source_stale(fund.reg_no)
-            db.commit()
-            logger.warning(
-                "Fund %s has no history in the last %s days; retry deferred for %s hours",
-                fund.reg_no, history_days, STALE_SOURCE_RETRY_HOURS,
-            )
-            return True
-
-        count = 0
-        for observed_at, item in history_records:
-
-            # Only insert if we don't already have this date
-            existing = repo.get_history_by_date(fund.reg_no, observed_at)
-            if not existing:
-                repo.upsert_fund_history(
-                    reg_no=fund.reg_no,
-                    nav_stat=item.get("navStat") or 0.0,
-                    net_asset=item.get("netAsset") or 0.0,
-                    observed_at=observed_at,
-                )
-                count += 1
-
+            
         db.commit()
-
-        if count == 0 and repo.get_history_count(fund.reg_no, since=cutoff) < record_limit:
-            repo.mark_history_source_stale(fund.reg_no)
-            db.commit()
-            logger.warning(
-                "Fund %s did not provide additional recent observations; retry deferred for %s hours",
-                fund.reg_no, STALE_SOURCE_RETRY_HOURS,
-            )
-
-        completed, total = repo.get_history_backfill_progress(history_days, since=cutoff)
-        covered, _ = repo.get_history_backfill_progress(1, since=cutoff)
-        logger.info(
-            "History backfill [%s/%s] finished for fund %s: +%s records; recent coverage %s/%s; 30-day completion %s/%s",
-            phase, source_mode, fund.reg_no, count, covered, total, completed, total,
-        )
-        return True
-
-    except Exception:
+        logger.info(f"Successfully backfilled history for Fund {reg_no}.")
+        
+    except Exception as e:
         db.rollback()
-        logger.exception(
-            "History backfill failed for Fund %s",
-            fund.reg_no if 'fund' in locals() else 'unknown'
-        )
-        return True
-
+        # حالا اینجا reg_no مقدار دارد و ارور نمی‌دهد
+        logger.error(f"Error backfilling fund {reg_no}: {e}")
     finally:
         db.close()

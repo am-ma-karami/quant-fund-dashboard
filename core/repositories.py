@@ -1,6 +1,7 @@
 from sqlalchemy.orm import Session
 from core.models import Fund, FundHistory, HistoryBackfillState, ETFMarket, ETFMarketHistory
 from datetime import datetime
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from zoneinfo import ZoneInfo
 
@@ -223,28 +224,26 @@ class FundRepository:
         )
 
     def upsert_fund_history(self, reg_no: int, nav_stat: float, net_asset: float, observed_at: datetime):
-        """منطق UPSERT: اگر بود آپدیت کن، اگر نبود بساز"""
-        history = self.db.query(FundHistory).filter(
-            FundHistory.fund_reg_no == reg_no,
-            FundHistory.observed_at == observed_at
-        ).first()
+        """
+        استفاده از قابلیت بومی PostgreSQL برای سرعت بی‌نهایت و جلوگیری از ارور Duplicate Key
+        """
+        stmt = pg_insert(FundHistory).values(
+            fund_reg_no=reg_no,
+            nav_stat=nav_stat,
+            net_asset=net_asset,
+            observed_at=observed_at
+        )
         
-        if history:
-            # Correction: اگر دیتا در بورس اصلاح شده بود، ما هم آپدیت می‌کنیم
-            history.nav_stat = nav_stat
-            history.net_asset = net_asset
-        else:
-            # Insert
-            history = FundHistory(
-                fund_reg_no=reg_no,
-                nav_stat=nav_stat,
-                net_asset=net_asset,
-                observed_at=observed_at
+        # اگر رکورد با این تاریخ قبلاً وجود داشت، فقط مقادیر آن را آپدیت کن
+        stmt = stmt.on_conflict_do_update(
+            index_elements=['fund_reg_no', 'observed_at'],
+            set_=dict(
+                nav_stat=stmt.excluded.nav_stat,
+                net_asset=stmt.excluded.net_asset
             )
-            self.db.add(history)
-
-        # Flush immediately to avoid bulk insert conflicts
-        self.db.flush()
+        )
+        
+        self.db.execute(stmt)
 
 
 class ETFRepository:
