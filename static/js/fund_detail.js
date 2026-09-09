@@ -106,6 +106,27 @@ function renderInteractiveFundChart(container, points, defaultDays) {
         svg.style.width = '100%';
         svg.style.height = '350px';
 
+        // تعریف گرادیانت سبز برای ناحیه زیر نمودار
+        const defs = document.createElementNS(ns, 'defs');
+        const gradient = document.createElementNS(ns, 'linearGradient');
+        gradient.setAttribute('id', 'fundGradient');
+        gradient.setAttribute('x1', '0%');
+        gradient.setAttribute('y1', '0%');
+        gradient.setAttribute('x2', '0%');
+        gradient.setAttribute('y2', '100%');
+        const stop1 = document.createElementNS(ns, 'stop');
+        stop1.setAttribute('offset', '0%');
+        stop1.setAttribute('stop-color', '#198754');
+        stop1.setAttribute('stop-opacity', '0.25');
+        const stop2 = document.createElementNS(ns, 'stop');
+        stop2.setAttribute('offset', '100%');
+        stop2.setAttribute('stop-color', '#198754');
+        stop2.setAttribute('stop-opacity', '0');
+        gradient.appendChild(stop1);
+        gradient.appendChild(stop2);
+        defs.appendChild(gradient);
+        svg.appendChild(defs);
+
         const values = data.map(([, value]) => value);
         const rawMin = Math.min(...values);
         const rawMax = Math.max(...values);
@@ -139,15 +160,15 @@ function renderInteractiveFundChart(container, points, defaultDays) {
             return `L ${xFor(timestamp)} ${yFor(previousValue)} L ${xFor(timestamp)} ${yFor(value)}`;
         }).join(' ');
         const area = `${line} L ${xFor(data.at(-1)[0])} ${padding.top + plotHeight} L ${xFor(data[0][0])} ${padding.top + plotHeight} Z`;
-        append('path', { d: area, fill: 'rgba(37, 99, 235, 0.14)' });
-        append('path', { d: line, fill: 'none', stroke: '#2563eb', 'stroke-width': '2.5', 'stroke-linejoin': 'round' });
+        append('path', { d: area, fill: 'url(#fundGradient)' });
+        append('path', { d: line, fill: 'none', stroke: '#198754', 'stroke-width': '2.5', 'stroke-linejoin': 'round', 'stroke-linecap': 'round' });
         [data[0], data.at(-1)].forEach(([timestamp], index) => {
             const label = append('text', { x: xFor(timestamp), y: height - 14, 'text-anchor': index ? 'end' : 'start', fill: '#6c757d', 'font-size': '11' });
             label.textContent = formatDate(timestamp);
         });
 
         const crosshair = append('line', { y1: padding.top, y2: padding.top + plotHeight, stroke: '#94a3b8', 'stroke-dasharray': '4 4', visibility: 'hidden' });
-        const marker = append('circle', { r: '5', fill: '#fff', stroke: '#2563eb', 'stroke-width': '2', visibility: 'hidden' });
+        const marker = append('circle', { r: '5', fill: '#fff', stroke: '#198754', 'stroke-width': '2', visibility: 'hidden' });
         const tooltip = document.createElement('div');
         tooltip.className = 'position-absolute bg-dark text-white rounded px-2 py-1 small shadow';
         tooltip.style.cssText += ';display:none;pointer-events:none;z-index:1;';

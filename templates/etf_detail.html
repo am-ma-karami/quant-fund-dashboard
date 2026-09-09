@@ -1,45 +1,66 @@
 {% extends "base.html" %}
 {% block content %}
 <div class="mb-3">
-    <a href="/etf-live" class="btn btn-outline-secondary btn-sm">&larr; بازگشت به تابلوی ETF</a>
+    <a href="/etf-live" class="btn btn-outline-secondary btn-sm">&larr; بازگشت به تابلوی معاملات</a>
 </div>
 
+<!-- Header -->
 <div class="d-flex justify-content-between align-items-end mb-4 border-bottom pb-3">
     <div>
         <h3 class="text-primary fw-bold mb-1">{{ etf.symbol }} <span class="badge bg-danger fs-6 pulse">LIVE</span></h3>
         <span class="text-muted small">{{ etf.name }}</span>
     </div>
     <div class="text-end">
-        <div class="small text-muted">آخرین آپدیت تابلو</div>
-        <div class="fw-bold" id="last_updated">{{ etf.last_updated.strftime('%Y-%m-%d %H:%M:%S') if etf.last_updated else '' }}</div>
+        <div class="small text-muted">ساعت تابلو</div>
+        <div class="fw-bold fs-5 font-monospace" id="last_updated">{{ etf.last_updated.strftime('%H:%M:%S') if etf.last_updated else '--:--:--' }}</div>
     </div>
 </div>
 
 <div class="row">
-    <!-- ستون سمت راست: اطلاعات تابلوی معاملات -->
+    <!-- ستون سمت راست: دیتای لایو -->
     <div class="col-md-4">
-        <div class="card shadow-sm border-0 mb-4 bg-dark text-white">
-            <div class="card-header border-secondary border-bottom"><strong>اطلاعات تابلوی لایو (ریال)</strong></div>
-            <ul class="list-group list-group-flush">
-                <li class="list-group-item bg-dark text-white d-flex justify-content-between align-items-center">
-                    آخرین معامله:<span class="fw-bold text-success fs-5" id="last_price">{{ "{:,.0f}".format(etf.last_price) if etf.last_price else "-" }}</span>
-                </li>
-                <li class="list-group-item bg-dark text-white d-flex justify-content-between align-items-center">
-                    قیمت پایانی:<span class="fw-bold" id="closing_price">{{ "{:,.0f}".format(etf.closing_price) if etf.closing_price else "-" }}</span>
-                </li>
-                <li class="list-group-item bg-dark text-white d-flex justify-content-between align-items-center">
-                    تعداد معاملات امرو:<span class="fw-bold text-info" id="total_trades">{{ "{:,.0f}".format(etf.total_trades) if etf.total_trades else "-" }}</span>
-                </li>
-            </ul>
+        <!-- کارت تابلوی بورس -->
+        <div class="card shadow-sm border-0 mb-4 bg-dark text-white font-monospace">
+            <div class="card-header border-secondary text-info fw-bold">MARKET DATA</div>
+            <div class="card-body">
+                <div class="d-flex justify-content-between mb-3">
+                    <span class="text-secondary">LAST PRICE</span>
+                    <span class="fs-4 fw-bold {% if etf.price_change and etf.price_change > 0 %}text-success{% else %}text-danger{% endif %}" id="last_price">
+                        {{ "{:,.0f}".format(etf.last_price) if etf.last_price else "-" }}
+                    </span>
+                </div>
+                <div class="d-flex justify-content-between mb-3">
+                    <span class="text-secondary">CLOSING</span>
+                    <span class="fs-5" id="closing_price">{{ "{:,.0f}".format(etf.closing_price) if etf.closing_price else "-" }}</span>
+                </div>
+                <div class="d-flex justify-content-between">
+                    <span class="text-secondary">TRADES</span>
+                    <span class="text-warning" id="total_trades">{{ "{:,.0f}".format(etf.total_trades) if etf.total_trades else "-" }}</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- کارت حباب (Premium Insight) -->
+        <div class="card shadow-sm border-0 mb-4 border-start border-4 border-primary">
+            <div class="card-body">
+                <h6 class="text-muted mb-3 fw-bold">تحلیل حباب (Premium/Discount)</h6>
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <span class="small">ارزش ذاتی (NAV):</span>
+                    <span class="fw-bold text-primary" id="nav_stat">-</span>
+                </div>
+                <div class="d-flex justify-content-between align-items-center">
+                    <span class="small">وضعیت حباب:</span>
+                    <span class="badge fs-6" id="premium_badge">-</span>
+                </div>
+            </div>
         </div>
     </div>
     
-    <!-- ستون سمت چپ: نمودار نوسانات لحظه‌ای -->
+    <!-- ستون سمت چپ: چارت نوسانات امروز -->
     <div class="col-md-8">
         <div class="card shadow-sm border-0 mb-4">
-            <div class="card-header bg-light d-flex justify-content-between">
-                <strong>نمودار نوسانات لحظه‌ای (Intraday)</strong>
-                <span class="badge bg-primary">آخرین معامله</span>
+            <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                <strong class="text-dark">نوسانات قیمت آخرین معامله (Intraday)</strong>
             </div>
             <div class="card-body">
                 <canvas id="etfChart" height="130"></canvas>
@@ -50,43 +71,83 @@
 
 <script>
     const ctx = document.getElementById('etfChart').getContext('2d');
+    
+    // ساخت گرادیانت زیبا برای زیر نمودار
+    let gradient = ctx.createLinearGradient(0, 0, 0, 400);
+    gradient.addColorStop(0, 'rgba(13, 110, 253, 0.4)'); // آبی بالا
+    gradient.addColorStop(1, 'rgba(13, 110, 253, 0.0)'); // محو پایین
+
     const chart = new Chart(ctx, {
         type: 'line',
         data: {
-            labels: {{ labels | safe }},
+            labels: [],
             datasets: [{ 
-                label: 'قیمت آخرین معامله', 
-                data: {{ data | safe }}, 
-                borderColor: '#dc3545', 
-                backgroundColor: 'rgba(220, 53, 69, 0.1)', 
+                label: 'قیمت', 
+                data: [], 
+                borderColor: '#0d6efd', 
+                backgroundColor: gradient, 
                 borderWidth: 2, 
-                pointRadius: 0, // حذف نقطه‌ها برای زیباتر شدن چارت نوسانی
-                stepped: false,
-                tension: 0.1,
+                pointRadius: 0, 
+                pointHoverRadius: 6,
+                tension: 0.2, // منحنی نرم
                 fill: true 
             }]
         },
         options: { 
-            responsive: true, 
-            plugins: { legend: { display: false } },
-            scales: { x: { display: false } } // مخفی کردن محور زمان برای تمیزی
+            responsive: true,
+            interaction: { mode: 'index', intersect: false },
+            plugins: { 
+                legend: { display: false },
+                tooltip: {
+                    backgroundColor: 'rgba(0,0,0,0.8)',
+                    titleFont: { family: 'Tahoma', size: 13 },
+                    bodyFont: { family: 'Tahoma', size: 14, weight: 'bold' },
+                    callbacks: {
+                        label: function(context) { return context.parsed.y.toLocaleString() + ' ریال'; },
+                        title: function(context) { return 'ساعت: ' + context[0].label; }
+                    }
+                }
+            },
+            scales: { 
+                x: { grid: { display: false }, ticks: { maxTicksLimit: 8, font: {family: 'Tahoma'} } },
+                y: { grid: { borderDash: [5, 5] }, ticks: { callback: function(val) { return val.toLocaleString(); }, font: {family: 'Tahoma'} } }
+            } 
         }
     });
 
-    // آپدیت خودکار چارت بدون رفرش
-    setInterval(() => {
+    function updateETF() {
         fetch('/api/etf/{{ etf.ins_code }}/chart')
             .then(res => res.json())
             .then(data => {
+                // آپدیت چارت
                 chart.data.labels = data.labels;
                 chart.data.datasets[0].data = data.data;
+                
+                // تغییر رنگ نمودار بر اساس مثبت یا منفی بودن سهم
+                if(data.price_change < 0) {
+                    chart.data.datasets[0].borderColor = '#dc3545';
+                    let gradRed = ctx.createLinearGradient(0,0,0,400);
+                    gradRed.addColorStop(0, 'rgba(220, 53, 69, 0.4)'); gradRed.addColorStop(1, 'rgba(220, 53, 69, 0)');
+                    chart.data.datasets[0].backgroundColor = gradRed;
+                }
                 chart.update();
                 
+                // آپدیت دیتاهای متنی
                 document.getElementById('last_price').innerText = data.last_price ? data.last_price.toLocaleString() : "-";
                 document.getElementById('closing_price').innerText = data.closing_price ? data.closing_price.toLocaleString() : "-";
-                if(data.total_trades) document.getElementById('total_trades').innerText = data.total_trades.toLocaleString();
+                document.getElementById('total_trades').innerText = data.total_trades ? data.total_trades.toLocaleString() : "-";
                 document.getElementById('last_updated').innerText = data.last_updated;
+                
+                // آپدیت باکس حباب
+                document.getElementById('nav_stat').innerText = data.nav_stat ? data.nav_stat.toLocaleString() + " ریال" : "نامشخص";
+                let badge = document.getElementById('premium_badge');
+                if(data.premium !== null) {
+                    badge.innerText = Math.abs(data.premium) + "% " + (data.premium > 0 ? "حباب مثبت" : "تخفیف (Discount)");
+                    badge.className = data.premium > 0 ? "badge bg-danger p-2" : "badge bg-success p-2";
+                }
             });
-    }, 60000);
+    }
+    updateETF();
+    setInterval(updateETF, 60000);
 </script>
 {% endblock %}

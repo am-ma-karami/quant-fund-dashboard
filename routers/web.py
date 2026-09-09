@@ -7,6 +7,7 @@ from datetime import timedelta
 
 from core.database import get_db
 from core.repositories import FundRepository, ETFRepository, iran_time
+from core.models import Fund, ETFMarket
 
 router = APIRouter()
 templates = Jinja2Templates(directory="templates")
@@ -169,21 +170,39 @@ def api_fund_chart(reg_no: int, db: Session = Depends(get_db)):
 @router.get("/api/etf/{ins_code}/chart")
 def api_etf_chart(ins_code: str, db: Session = Depends(get_db)):
     repo = ETFRepository(db)
-
     etf = repo.get_etf_by_ins_code(ins_code)
-
+    
     if etf is None:
         raise HTTPException(
             status_code=404,
             detail=f"ETF {ins_code} not found"
         )
 
+    # گرفتن تاریخچه نوسانات امروز
     histories = repo.get_etf_history(ins_code)
+    
+    # پیدا کردن صندوق متناظر برای محاسبه حباب لحظه‌ای (Premium)
+    # جستجو بر اساس نام/نماد مشابه
+    fund = db.query(Fund).filter(Fund.name.ilike(f"%{etf.name}%")).first()
+    if not fund and etf.symbol:
+        fund = db.query(Fund).filter(Fund.name.ilike(f"%{etf.symbol}%")).first()
+    
+    premium = 0
+    nav_stat = 0
+    if fund and fund.nav_stat and etf.last_price:
+        nav_stat = fund.nav_stat
+        premium = ((etf.last_price - nav_stat) / nav_stat) * 100
+
     return {
         "labels": [h.observed_at.strftime('%H:%M') for h in histories],
         "data": [h.last_price for h in histories],
-        "last_price": etf.last_price, "closing_price": etf.closing_price,
-        "last_updated": etf.last_updated.strftime('%Y-%m-%d %H:%M:%S')
+        "last_price": etf.last_price,
+        "closing_price": etf.closing_price,
+        "price_change": etf.price_change,
+        "total_trades": etf.total_trades,
+        "nav_stat": nav_stat,
+        "premium": round(premium, 2),
+        "last_updated": etf.last_updated.strftime('%H:%M:%S') if etf.last_updated else ""
     }
 
 
