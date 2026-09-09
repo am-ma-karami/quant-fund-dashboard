@@ -367,3 +367,25 @@ class TSETMCProvider:
 
         return data.get("instrumentState")
 
+    def fetch_fund_history_detail(self, reg_no: int) -> list:
+        """گرفتن تاریخچه صندوق برای bootstrap/backfill."""
+        url = f"{self.base_url}/Fund/GetFundInDetail/{reg_no}"
+
+        try:
+            response = request_with_retry(
+                url,
+                headers=self.headers,
+                timeout=self.timeout,
+                retries=self.max_retries,
+            )
+            data = response.json()
+        except requests.RequestException:
+            logger.exception("Failed to fetch history for fund %s", reg_no)
+            return []
+
+        history = data.get("fund", {}).get("stats", [])
+
+        logger.info("Fund %s fetched %s history records", reg_no, len(history))
+
+        return history
+
