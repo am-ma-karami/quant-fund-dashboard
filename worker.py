@@ -7,6 +7,7 @@ from core.database import engine, Base
 from services.fund_sync import sync_funds_pipeline
 from services.tasks import update_etf_market_data
 from services.history_bootstrap import backfill_single_fund
+from services.benchmark_sync import sync_benchmark_history
 
 
 logging.basicConfig(
@@ -59,12 +60,22 @@ def run_history_backfill():
         logger.exception("History backfill failed.")
 
 
+def run_benchmark_sync():
+    try:
+        logger.info("Starting benchmark sync...")
+        sync_benchmark_history()
+        logger.info("Benchmark sync completed.")
+    except Exception:
+        logger.exception("Benchmark sync failed.")
+
+
 if __name__ == "__main__":
     logger.info("Starting Quant Worker Service...")
 
     run_fund_sync()
     run_etf_sync()
     run_history_backfill()
+    run_benchmark_sync()
 
     scheduler = BlockingScheduler()
 
@@ -96,6 +107,16 @@ if __name__ == "__main__":
         max_instances=1,
         coalesce=True,
         misfire_grace_time=30,
+    )
+
+    scheduler.add_job(
+        run_benchmark_sync,
+        "interval",
+        minutes=15,
+        id="benchmark_sync",
+        max_instances=1,
+        coalesce=True,
+        misfire_grace_time=60,
     )
 
     try:

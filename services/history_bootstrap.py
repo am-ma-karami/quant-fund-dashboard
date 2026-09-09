@@ -6,9 +6,8 @@ history_backfill_state ثبت می‌شود) تا صندوق‌هایی که د�
 کمتر از ۹۰ رکورد دارند، در یک حلقه بی‌نهایت دانلود نشوند.
 """
 import logging
-from datetime import datetime, timedelta
+from datetime import timedelta
 
-from dateutil import parser
 from sqlalchemy import func
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
@@ -20,7 +19,7 @@ from core.models import (
     HistoryBackfillState,
 )
 from core.repositories import FundRepository, iran_time
-from services.providers import TSETMCProvider
+from services.providers import TSETMCProvider, parse_tsetmc_date
 
 
 logger = logging.getLogger(__name__)
@@ -31,36 +30,6 @@ STALE_SOURCE_RETRY_HOURS = 6
 BACKFILL_TARGET_RECORDS = 90
 BACKFILL_BATCH_SIZE = 10
 ETF_HISTORY_DAYS = 90
-
-
-def parse_tsetmc_date(value) -> datetime | None:
-    """تبدیل تاریخ TSETMC به datetime ساده (بدون timezone).
-
-    TSETMC دو شکل تاریخ برمی‌گرداند:
-      - ``recordDate`` تاریخچه صندوق: رشته ISO مثل ``"2012-09-23T00:00:00"``
-      - ``dEven`` قیمت ETF: عدد ۸ رقمی ``YYYYMMDD`` (عدد یا رشته)
-    """
-    if value is None:
-        return None
-
-    raw = str(value).strip()
-    if not raw:
-        return None
-
-    if len(raw) == 8 and raw.isdigit():
-        try:
-            return datetime.strptime(raw, "%Y%m%d")
-        except ValueError:
-            return None
-
-    try:
-        parsed = parser.parse(raw)
-    except (ValueError, OverflowError):
-        return None
-
-    if parsed.tzinfo is not None:
-        parsed = parsed.replace(tzinfo=None)
-    return parsed
 
 
 def _funds_needing_backfill(db, limit: int) -> list[Fund]:

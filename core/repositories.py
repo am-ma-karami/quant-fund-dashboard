@@ -1,4 +1,5 @@
 from sqlalchemy.orm import Session
+from sqlalchemy import text
 from core.models import Fund, FundHistory, HistoryBackfillState, ETFMarket, ETFMarketHistory, BenchmarkHistory
 from services.risk import returns_from_prices, annualized_volatility, sharpe_ratio, maximum_drawdown
 from datetime import datetime
@@ -245,6 +246,39 @@ class FundRepository:
             "max_drawdown": maximum_drawdown(prices),
         }
 
+    def get_volatility_map(self, since: datetime) -> dict:
+        """نوسان سالانه‌شده هر صندوق از تاریخچه اخیر — در یک کوئری.
+
+        برای نقشه ریسک/بازده داشبورد: به جای ۵۰۰ کوئری جداگانه،
+        همه تاریخچه‌ها یکجا خوانده و در پایتون گروه‌بندی می‌شوند.
+        """
+        rows = (
+            self.db.query(
+                FundHistory.fund_reg_no,
+                FundHistory.nav_stat,
+            )
+            .filter(
+                FundHistory.observed_at >= since,
+                FundHistory.nav_stat.isnot(None),
+            )
+            .order_by(
+                FundHistory.fund_reg_no,
+                FundHistory.observed_at,
+            )
+            .all()
+        )
+
+        prices_by_fund = {}
+        for reg_no, nav in rows:
+            if nav is None or nav <= 0:
+                continue
+            prices_by_fund.setdefault(reg_no, []).append(nav)
+
+        return {
+            reg_no: annualized_volatility(returns_from_prices(prices))
+            for reg_no, prices in prices_by_fund.items()
+        }
+
     def get_funds_with_insufficient_history(self, min_days: int = 5, limit: int = 20):
         """صندوق‌هایی که تاریخچه ندارند یا آخرین رکوردشان قدیمی است"""
         from datetime import timedelta
@@ -414,6 +448,36 @@ class ETFRepository:
         ]
 
 
+    def get_daily_price_history(
+        self,
+        ins_code: str,
+        days: int = 90,
+    ) -> list:
+        """آخرین مشاهده هر روز معاملاتی (برای سری روزانه قیمت/پریمیوم).
+
+        از DISTINCT ON بومی Postgres استفاده می‌کند تا از میان
+        ردیف‌های intraday (هر دقیقه در ساعات معاملات)، فقط آخرین
+        مشاهده هر روز برداشته شود.
+        """
+        sql = text(
+            """
+            SELECT DISTINCT ON (ins_code, observed_at::date)
+                   id, ins_code, last_price, closing_price,
+                   premium_discount, nav, observed_at
+            FROM etf_market_histories
+            WHERE ins_code = :ins_code
+            ORDER BY ins_code, observed_at::date DESC, observed_at DESC
+            LIMIT :limit
+            """
+        )
+
+        rows = self.db.execute(
+            sql,
+            {"ins_code": ins_code, "limit": days},
+        ).all()
+
+        return list(reversed(rows))
+
     def get_market_pulse(self):
         """
         محاسبه شاخص‌های کلان بازار (Market Pulse) بر اساس تابلوی لایو ETFها
@@ -488,12 +552,15 @@ class BenchmarkRepository:
         benchmark_code: str,
         limit: int = 252,
     ):
-        return (
+        """آخرین `limit` مشاهده شاخص به ترتیب صعودی تاریخ."""
+        rows = (
             self.db.query(BenchmarkHistory)
             .filter(
                 BenchmarkHistory.benchmark_code == benchmark_code
             )
-            .order_by(BenchmarkHistory.observed_at.asc())
+            .order_by(BenchmarkHistory.observed_at.desc())
             .limit(limit)
             .all()
         )
+
+        return list(reversed(rows))

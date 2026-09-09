@@ -1,10 +1,43 @@
 import logging
 import time
+from datetime import datetime
+
 import requests
+from dateutil import parser
 from threading import Lock
 
 
 logger = logging.getLogger(__name__)
+
+
+def parse_tsetmc_date(value) -> datetime | None:
+    """تبدیل تاریخ TSETMC به datetime ساده (بدون timezone).
+
+    TSETMC دو شکل تاریخ برمی‌گرداند:
+      - ``recordDate`` تاریخچه صندوق: رشته ISO مثل ``"2012-09-23T00:00:00"``
+      - ``dEven`` قیمت ETF و شاخص: عدد ۸ رقمی ``YYYYMMDD`` (عدد یا رشته)
+    """
+    if value is None:
+        return None
+
+    raw = str(value).strip()
+    if not raw:
+        return None
+
+    if len(raw) == 8 and raw.isdigit():
+        try:
+            return datetime.strptime(raw, "%Y%m%d")
+        except ValueError:
+            return None
+
+    try:
+        parsed = parser.parse(raw)
+    except (ValueError, OverflowError):
+        return None
+
+    if parsed.tzinfo is not None:
+        parsed = parsed.replace(tzinfo=None)
+    return parsed
 
 
 class CircuitBreaker:

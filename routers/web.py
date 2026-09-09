@@ -8,7 +8,15 @@ from datetime import timedelta
 from core.database import get_db
 from core.repositories import FundRepository, ETFRepository, BenchmarkRepository, iran_time
 from core.models import Fund, FundHistory, ETFMarket, BenchmarkHistory
-from services.analytics import active_return, cumulative_return
+from core.benchmark import TEHRAN_TOTAL_INDEX
+from services.analytics import (
+    active_return,
+    cumulative_return,
+    drawdown_series,
+    fund_flows,
+    index_to_100,
+    cumulative_sum,
+)
 from services.etf_analytics import calculate_premium_zscore
 
 router = APIRouter()
@@ -186,7 +194,7 @@ def api_fund_chart(reg_no: int, db: Session = Depends(get_db)):
 
     benchmark_repo = BenchmarkRepository(db)
     benchmark_history = benchmark_repo.get_history(
-        "32097828799138957",
+        TEHRAN_TOTAL_INDEX.code,
         limit=252,
     )
 
@@ -203,6 +211,58 @@ def api_fund_chart(reg_no: int, db: Session = Depends(get_db)):
         fund_return,
         benchmark_return,
     )
+
+    # مقایسه با شاخص: هم‌ترازی با تاریخ‌های NAV و نرمال‌سازی به ۱۰۰
+    benchmark_by_date = {
+        h.observed_at.strftime("%Y-%m-%d"): h.value
+        for h in benchmark_history
+    }
+
+    benchmark_aligned = []
+    last_benchmark = None
+    for date in labels:
+        value = benchmark_by_date.get(date, last_benchmark)
+        if value is not None:
+            last_benchmark = value
+        benchmark_aligned.append(value)
+
+    comparison = None
+    first_common = next(
+        (
+            index
+            for index, (nav, bench) in enumerate(
+                zip(nav_data, benchmark_aligned)
+            )
+            if nav and bench
+        ),
+        None,
+    )
+    if first_common is not None:
+        comparison = {
+            "labels": labels[first_common:],
+            "fund": index_to_100(nav_data[first_common:]),
+            "benchmark": index_to_100(benchmark_aligned[first_common:]),
+        }
+
+    # سری دراودان و جریان پول از تاریخچه هم‌تراز
+    history_by_date = {
+        h.observed_at.strftime("%Y-%m-%d"): h
+        for h in recent_histories
+    }
+    aum_data = [
+        history_by_date[date].net_asset if history_by_date.get(date) else None
+        for date in labels
+    ]
+    flows_per_period = fund_flows(nav_data, aum_data)
+    flows = {
+        "labels": labels,
+        "per_period": flows_per_period,
+        "cumulative": cumulative_sum(flows_per_period),
+    }
+    drawdown = {
+        "labels": labels,
+        "values": drawdown_series(nav_data),
+    }
 
     return {
         "fund": {
@@ -232,6 +292,9 @@ def api_fund_chart(reg_no: int, db: Session = Depends(get_db)):
         "window_start": cutoff.isoformat(),
         "has_changes_in_window": bool(recent_histories),
         "latest_history_at": latest_history_at.isoformat() if latest_history_at else None,
+        "comparison": comparison,
+        "drawdown": drawdown,
+        "flows": flows,
     }
 
 @router.get("/api/etf/{ins_code}/chart")
@@ -258,6 +321,63 @@ def api_etf_chart(ins_code: str, db: Session = Depends(get_db)):
         historical_premiums,
     )
 
+    # سری پریمیوم intraday (همان ردیف‌های امروز که premium_discount دارند)
+    premium_intraday = {
+        "labels": [h.observed_at.strftime('%H:%M') for h in histories],
+        "values": [
+            h.premium_discount
+            if h.premium_discount is not None
+            else None
+            for h in histories
+        ],
+    }
+
+    # سری روزانه پریمیوم (۹۰ روز): قیمت پایانی ETF در برابر NAV صندوق متناظر
+    premium_series = {
+        "labels": [],
+        "values": [],
+        "fund_reg_no": None,
+    }
+    mapped_fund = db.query(Fund).filter(Fund.ins_code == ins_code).first()
+    if mapped_fund is not None:
+        daily_rows = repo.get_daily_price_history(ins_code, days=90)
+        price_by_date = {}
+        for row in daily_rows:
+            if row.observed_at is None:
+                continue
+            price = row.closing_price or row.last_price
+            if price:
+                price_by_date[row.observed_at.date().isoformat()] = price
+
+        fund_navs = (
+            db.query(FundHistory)
+            .filter(FundHistory.fund_reg_no == mapped_fund.reg_no)
+            .order_by(FundHistory.observed_at.desc())
+            .limit(150)
+            .all()
+        )
+        nav_by_date = {
+            h.observed_at.date().isoformat(): h.nav_stat
+            for h in fund_navs
+            if h.observed_at is not None and h.nav_stat
+        }
+
+        labels = []
+        values = []
+        for date in sorted(set(price_by_date) & set(nav_by_date)):
+            price = price_by_date[date]
+            nav = nav_by_date[date]
+            if not nav:
+                continue
+            labels.append(date)
+            values.append(round(((price / nav) - 1.0) * 100.0, 2))
+
+        premium_series = {
+            "labels": labels,
+            "values": values,
+            "fund_reg_no": mapped_fund.reg_no,
+        }
+
     return {
         "labels": [h.observed_at.strftime('%H:%M') for h in histories],
         "data": [h.last_price for h in histories],
@@ -276,6 +396,8 @@ def api_etf_chart(ins_code: str, db: Session = Depends(get_db)):
         "nav_red": etf.nav_red,
         "premium": etf.premium_discount,
         "premium_zscore": premium_zscore,
+        "premium_intraday": premium_intraday,
+        "premium_series": premium_series,
         "last_updated": etf.last_updated.strftime('%H:%M:%S') if etf.last_updated else ""
     }
 
@@ -316,6 +438,35 @@ def api_top_funds(
         }
         for index, fund in enumerate(funds)
     ]
+
+
+@router.get("/api/dashboard/risk-return")
+@cache(expire=3600)
+def api_risk_return(
+    db: Session = Depends(get_db)
+):
+    """نقشه ریسک/بازده صندوق‌های سهامی: x=نوسان سالانه، y=بازده ۹۰ روزه، اندازه=AUM."""
+    repo = FundRepository(db)
+
+    funds = repo.get_funds_by_type(6)
+
+    since = iran_time() - timedelta(days=150)
+    volatility_map = repo.get_volatility_map(since)
+
+    points = []
+    for fund in funds:
+        volatility = volatility_map.get(fund.reg_no)
+        if volatility is None or fund.day90_return is None:
+            continue
+        points.append({
+            "reg_no": fund.reg_no,
+            "name": fund.name,
+            "volatility": round(volatility * 100, 2),
+            "return_90d": round(fund.day90_return, 2),
+            "aum": round(fund.net_asset or 0),
+        })
+
+    return points
 
 
 @router.get("/api/dashboard/heatmap")
