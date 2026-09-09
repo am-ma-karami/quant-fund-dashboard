@@ -7,6 +7,7 @@ from core.database import SessionLocal
 from core.repositories import FundRepository, ETFRepository
 from services.providers import TSETMCProvider
 from services.preprocessing import clean_fund_data
+from services.etf_analytics import calculate_premium_discount
 
 logger = logging.getLogger(__name__)
 
@@ -93,6 +94,12 @@ def update_etf_market_data():
                 'price_yesterday': item.get("priceYesterday"),
                 'nav': item.get("nav"),
             }
+
+            nav = data.get('nav')
+            data['premium_discount'] = calculate_premium_discount(
+                market_price=data.get('last_price'),
+                nav=nav,
+            )
             
             etf_repo.upsert_etf_market(ins_code, symbol, name, data)
             etf_repo.add_etf_history(ins_code, data, observed_at=iran_time())
