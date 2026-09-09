@@ -258,16 +258,44 @@ class ETFRepository:
         if not etf:
             etf = ETFMarket(ins_code=ins_code, symbol=symbol, name=name)
             self.db.add(etf)
-            
-        etf.last_price = data['last_price']
-        etf.closing_price = data['closing_price']
-        etf.price_change = data['price_change']
-        etf.total_trades = data['total_trades']
+
+        etf.last_price = data.get('last_price')
+        etf.closing_price = data.get('closing_price')
+        etf.price_change = data.get('price_change')
+        etf.total_trades = data.get('total_trades')
+        etf.total_volume = data.get('total_volume')
+        etf.total_value = data.get('total_value')
+        etf.price_min = data.get('price_min')
+        etf.price_max = data.get('price_max')
+        etf.price_first = data.get('price_first')
+        etf.price_yesterday = data.get('price_yesterday')
+        etf.nav = data.get('nav')
+        etf.premium_discount = data.get('premium_discount')
         etf.last_updated = iran_time()
         return etf
 
-    def add_etf_history(self, ins_code: str, last_price: float, closing_price: float, observed_at):
-        history = ETFMarketHistory(ins_code=ins_code, last_price=last_price, closing_price=closing_price, observed_at=observed_at or iran_time())
+    def add_etf_history(
+        self,
+        ins_code: str,
+        data: dict,
+        observed_at=None,
+    ):
+        history = ETFMarketHistory(
+            ins_code=ins_code,
+            last_price=data.get('last_price'),
+            closing_price=data.get('closing_price'),
+            price_change=data.get('price_change'),
+            total_trades=data.get('total_trades'),
+            total_volume=data.get('total_volume'),
+            total_value=data.get('total_value'),
+            price_min=data.get('price_min'),
+            price_max=data.get('price_max'),
+            price_first=data.get('price_first'),
+            price_yesterday=data.get('price_yesterday'),
+            nav=data.get('nav'),
+            premium_discount=data.get('premium_discount'),
+            observed_at=observed_at or iran_time()
+        )
         self.db.add(history)
 
     def get_etf_by_ins_code(self, ins_code: str):

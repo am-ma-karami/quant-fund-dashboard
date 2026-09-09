@@ -84,11 +84,18 @@ def update_etf_market_data():
                 'last_price': item.get("pDrCotVal"),
                 'closing_price': item.get("pClosing"),
                 'price_change': item.get("priceChange"),
-                'total_trades': item.get("zTotTran")
+                'total_trades': item.get("zTotTran"),
+                'total_volume': item.get("qTotTran5J"),
+                'total_value': item.get("qTotCap"),
+                'price_min': item.get("priceMin"),
+                'price_max': item.get("priceMax"),
+                'price_first': item.get("priceFirst"),
+                'price_yesterday': item.get("priceYesterday"),
+                'nav': item.get("nav"),
             }
             
             etf_repo.upsert_etf_market(ins_code, symbol, name, data)
-            etf_repo.add_etf_history(ins_code, data['last_price'], data['closing_price'], observed_at=iran_time())
+            etf_repo.add_etf_history(ins_code, data, observed_at=iran_time())
             
         db.commit()
         logger.info(f"Successfully updated {len(etf_data)} ETF market prices.")

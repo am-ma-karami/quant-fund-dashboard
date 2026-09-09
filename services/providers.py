@@ -130,11 +130,10 @@ class TSETMCProvider:
         return data.get("funds", [])
 
     def fetch_live_etf_prices(self) -> list:
-
+        """دریافت دیتای کامل بازار ETF از API TradeTop."""
         results = []
 
         for flow in [1, 2]:
-
             url = (
                 f"{self.base_url}/ClosingPrice/"
                 f"GetTradeTop/ETF/{flow}/9999"
@@ -149,7 +148,10 @@ class TSETMCProvider:
                 )
                 data = response.json()
             except requests.RequestException:
-                logger.exception("Failed to fetch ETF prices for flow %s", flow)
+                logger.exception(
+                    "Failed to fetch ETF prices for flow %s",
+                    flow,
+                )
                 continue
 
             if not data:
@@ -160,6 +162,65 @@ class TSETMCProvider:
             )
 
         return results
+
+    def fetch_etf_nav(self, ins_code: str) -> dict | None:
+        """دریافت NAV لحظه‌ای ETF از API اختصاصی."""
+        url = (
+            f"{self.base_url}/Fund/"
+            f"GetETFByInsCode/{ins_code}"
+        )
+
+        try:
+            response = request_with_retry(
+                url,
+                headers=self.headers,
+                timeout=self.timeout,
+                retries=self.max_retries,
+            )
+            data = response.json()
+        except requests.RequestException:
+            logger.exception(
+                "Failed to fetch ETF NAV for %s",
+                ins_code,
+            )
+            return None
+
+        if not isinstance(data, dict):
+            return None
+
+        return data.get("etf")
+
+    def fetch_etf_history(
+        self,
+        ins_code: str,
+        days: int = 365,
+    ) -> list:
+        """دریافت تاریخچه قیمت روزانه ETF."""
+        url = (
+            f"{self.base_url}/ClosingPrice/"
+            f"GetClosingPriceDailyList/"
+            f"{ins_code}/{days}"
+        )
+
+        try:
+            response = request_with_retry(
+                url,
+                headers=self.headers,
+                timeout=self.timeout,
+                retries=self.max_retries,
+            )
+            data = response.json()
+        except requests.RequestException:
+            logger.exception(
+                "Failed to fetch ETF history %s",
+                ins_code,
+            )
+            return []
+
+        if not isinstance(data, dict):
+            return []
+
+        return data.get("closingPriceDaily", [])
 
     def fetch_fund_history_detail(self, reg_no: int) -> list:
         """گرفتن تاریخچه صندوق برای bootstrap/backfill."""
