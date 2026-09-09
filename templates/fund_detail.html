@@ -116,6 +116,44 @@
             </div>
         </div>
 
+        <!-- کارت مقایسه با شاخص کل (Benchmark Comparison) -->
+        <div class="card shadow-sm border-0 mb-4">
+            <div class="card-header bg-dark text-white d-flex justify-content-between">
+                <strong>🏛️ مقایسه با شاخص کل بورس (نرمال‌شده به ۱۰۰)</strong>
+                <span class="text-muted small" id="benchmark_status">-</span>
+            </div>
+            <div class="card-body">
+                <canvas id="benchmarkChart" height="180" style="max-height: 320px;"></canvas>
+                <div class="small text-muted mt-2">
+                    بازده مازاد (Active Return) یک‌ساله نسبت به شاخص کل:
+                    <span class="fw-bold" id="active_return">-</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- کارت‌های دراودان و جریان پول -->
+        <div class="row">
+            <div class="col-md-6">
+                <div class="card shadow-sm border-0 mb-4">
+                    <div class="card-header bg-light fw-bold">📉 منحنی افت سرمایه (Drawdown)</div>
+                    <div class="card-body">
+                        <canvas id="drawdownChart" height="160" style="max-height: 240px;"></canvas>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="card shadow-sm border-0 mb-4">
+                    <div class="card-header bg-light fw-bold">💸 جریان پول خالص (Flows) — تجمعی</div>
+                    <div class="card-body">
+                        <canvas id="flowsChart" height="160" style="max-height: 240px;"></canvas>
+                        <div class="small text-muted mt-2">
+                            ورود/خروج پول = ΔAUM − اثر بازده NAV (میلیارد ریال)
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <!-- کارت Asset Allocation (مدل ریسک) -->
         <div class="card shadow-sm border-0 mb-4">
             <div class="card-header bg-light fw-bold">📊 ترکیب دارایی و پوشش ریسک (Asset Allocation)</div>

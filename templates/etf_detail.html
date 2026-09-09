@@ -90,6 +90,18 @@
                 <canvas id="premiumChart" height="100"></canvas>
             </div>
         </div>
+        <div class="card shadow-sm border-0 mb-4">
+            <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
+                <strong>📈 سری روزانه پریمیوم (۹۰ روز اخیر)</strong>
+                <span class="small text-muted" id="premium_series_status">-</span>
+            </div>
+            <div class="card-body">
+                <canvas id="premiumSeriesChart" height="130"></canvas>
+                <div class="small text-muted mt-2">
+                    پریمیوم روزانه = (قیمت پایانی ETF / NAV آماری صندوق متناظر) − ۱ — مقایسه بر اساس تاریخ مشترک
+                </div>
+            </div>
+        </div>
     </div>
 </div>
 
@@ -105,22 +117,22 @@
         type: 'line',
         data: {
             labels: [],
-            datasets: [{ 
-                label: 'قیمت', 
-                data: [], 
-                borderColor: '#0d6efd', 
-                backgroundColor: gradient, 
-                borderWidth: 2, 
-                pointRadius: 0, 
+            datasets: [{
+                label: 'قیمت',
+                data: [],
+                borderColor: '#0d6efd',
+                backgroundColor: gradient,
+                borderWidth: 2,
+                pointRadius: 0,
                 pointHoverRadius: 6,
                 tension: 0.2, // منحنی نرم
-                fill: true 
+                fill: true
             }]
         },
-        options: { 
+        options: {
             responsive: true,
             interaction: { mode: 'index', intersect: false },
-            plugins: { 
+            plugins: {
                 legend: { display: false },
                 tooltip: {
                     backgroundColor: 'rgba(0,0,0,0.8)',
@@ -132,10 +144,71 @@
                     }
                 }
             },
-            scales: { 
+            scales: {
                 x: { grid: { display: false }, ticks: { maxTicksLimit: 8, font: {family: 'Tahoma'} } },
                 y: { grid: { borderDash: [5, 5] }, ticks: { callback: function(val) { return val.toLocaleString(); }, font: {family: 'Tahoma'} } }
-            } 
+            }
+        }
+    });
+
+    // نمودار پریمیوم intraday (هر ردیف امروز که premium_discount دارد)
+    const premiumCtx = document.getElementById('premiumChart').getContext('2d');
+    const premiumChart = new Chart(premiumCtx, {
+        type: 'line',
+        data: { labels: [], datasets: [{ label: 'پریمیوم (%)', data: [], borderColor: '#fd7e14', borderWidth: 2, pointRadius: 0, tension: 0.2, fill: true, backgroundColor: 'rgba(253, 126, 20, 0.08)' }] },
+        options: {
+            responsive: true,
+            interaction: { mode: 'index', intersect: false },
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    callbacks: {
+                        label: function(context) { return context.parsed.y !== null ? context.parsed.y + '%' : 'ناموجود'; },
+                        title: function(context) { return 'ساعت: ' + context[0].label; }
+                    }
+                }
+            },
+            scales: {
+                x: { grid: { display: false }, ticks: { maxTicksLimit: 8, font: {family: 'Tahoma'} } },
+                y: { grid: { borderDash: [5, 5] }, ticks: { callback: function(val) { return val + '%'; }, font: {family: 'Tahoma'} } }
+            }
+        }
+    });
+
+    // نمودار سری روزانه پریمیوم (۹۰ روز)
+    const premiumSeriesCtx = document.getElementById('premiumSeriesChart').getContext('2d');
+    const premiumSeriesChart = new Chart(premiumSeriesCtx, {
+        type: 'line',
+        data: {
+            labels: [],
+            datasets: [{
+                label: 'پریمیوم روزانه (%)',
+                data: [],
+                borderColor: '#6f42c1',
+                borderWidth: 2,
+                pointRadius: 0,
+                pointHoverRadius: 5,
+                tension: 0.15,
+                fill: true,
+                backgroundColor: 'rgba(111, 66, 193, 0.08)',
+            }]
+        },
+        options: {
+            responsive: true,
+            interaction: { mode: 'index', intersect: false },
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    callbacks: {
+                        label: function(context) { return 'پریمیوم: ' + context.parsed.y + '%'; },
+                        title: function(context) { return 'تاریخ: ' + context[0].label; }
+                    }
+                }
+            },
+            scales: {
+                x: { grid: { display: false }, ticks: { maxTicksLimit: 6, font: {family: 'Tahoma'} } },
+                y: { grid: { borderDash: [5, 5] }, ticks: { callback: function(val) { return val + '%'; }, font: {family: 'Tahoma'} } }
+            }
         }
     });
 
@@ -183,6 +256,24 @@
                 } else {
                     zscoreEl.innerText = "-";
                     zscoreEl.className = "fw-bold text-muted";
+                }
+
+                // آپدیت چارت پریمیوم intraday
+                if (data.premium_intraday) {
+                    premiumChart.data.labels = data.premium_intraday.labels;
+                    premiumChart.data.datasets[0].data = data.premium_intraday.values;
+                    premiumChart.update();
+                }
+
+                // آپدیت چارت سری روزانه پریمیوم
+                const premiumSeriesStatus = document.getElementById('premium_series_status');
+                if (data.premium_series && data.premium_series.labels.length >= 2) {
+                    premiumSeriesChart.data.labels = data.premium_series.labels;
+                    premiumSeriesChart.data.datasets[0].data = data.premium_series.values;
+                    premiumSeriesChart.update();
+                    premiumSeriesStatus.textContent = data.premium_series.labels.length + ' روز';
+                } else {
+                    premiumSeriesStatus.textContent = 'داده روزانه برای این ETF موجود نیست';
                 }
             });
     }

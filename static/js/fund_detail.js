@@ -11,6 +11,131 @@ async function fetchJSON(url) {
 }
 
 
+const analyticsCharts = {};
+
+function upsertChart(key, canvasId, config) {
+    if (analyticsCharts[key]) {
+        analyticsCharts[key].destroy();
+    }
+    analyticsCharts[key] = new Chart(
+        document.getElementById(canvasId),
+        config
+    );
+}
+
+const baseChartOptions = {
+    responsive: true,
+    maintainAspectRatio: false,
+    interaction: { mode: 'index', intersect: false },
+    scales: {
+        x: { ticks: { maxTicksLimit: 6, maxRotation: 0 } },
+        y: { beginAtZero: false },
+    },
+    plugins: { legend: { labels: { font: { family: 'Tahoma' } } } },
+};
+
+
+function renderAnalyticsCharts(data) {
+    // ۱. مقایسه با شاخص کل (نرمال‌شده به ۱۰۰)
+    if (data.comparison && data.comparison.labels.length >= 2) {
+        upsertChart('benchmark', 'benchmarkChart', {
+            type: 'line',
+            data: {
+                labels: data.comparison.labels,
+                datasets: [
+                    {
+                        label: 'صندوق',
+                        data: data.comparison.fund,
+                        borderColor: '#198754',
+                        backgroundColor: 'rgba(25, 135, 84, 0.08)',
+                        fill: true,
+                        tension: 0.15,
+                        pointRadius: 0,
+                        borderWidth: 2,
+                    },
+                    {
+                        label: 'شاخص کل',
+                        data: data.comparison.benchmark,
+                        borderColor: '#6f42c1',
+                        fill: false,
+                        tension: 0.15,
+                        pointRadius: 0,
+                        borderWidth: 2,
+                        borderDash: [6, 4],
+                    },
+                ],
+            },
+            options: baseChartOptions,
+        });
+        document.getElementById('benchmark_status').textContent = 'پایه = ۱۰۰ در ابتدای بازه';
+    } else {
+        document.getElementById('benchmark_status').textContent = 'داده شاخص برای این بازه موجود نیست';
+    }
+
+    // بازده مازاد یک‌ساله
+    const activeReturnEl = document.getElementById('active_return');
+    if (activeReturnEl && data.performance) {
+        const activeReturn = data.performance.active_return;
+        if (activeReturn !== null && activeReturn !== undefined) {
+            activeReturnEl.textContent = (activeReturn * 100).toFixed(2) + '%';
+            activeReturnEl.className = 'fw-bold ' + (activeReturn >= 0 ? 'text-success' : 'text-danger');
+        } else {
+            activeReturnEl.textContent = '-';
+        }
+    }
+
+    // ۲. منحنی دراودان (درصد)
+    if (data.drawdown && data.drawdown.labels.length >= 2) {
+        const drawdownPct = data.drawdown.values.map(v => v === null || v === undefined ? null : v * 100);
+        upsertChart('drawdown', 'drawdownChart', {
+            type: 'line',
+            data: {
+                labels: data.drawdown.labels,
+                datasets: [{
+                    label: 'افت از سقف (%)',
+                    data: drawdownPct,
+                    borderColor: '#dc3545',
+                    backgroundColor: 'rgba(220, 53, 69, 0.15)',
+                    fill: true,
+                    tension: 0.1,
+                    pointRadius: 0,
+                    borderWidth: 2,
+                }],
+            },
+            options: {
+                ...baseChartOptions,
+                scales: {
+                    ...baseChartOptions.scales,
+                    y: {
+                        max: 0,
+                        ticks: { callback: value => value + '%' },
+                    },
+                },
+            },
+        });
+    }
+
+    // ۳. جریان پول تجمعی (میلیارد ریال)
+    if (data.flows && data.flows.labels.length >= 2) {
+        const cumulative = data.flows.cumulative.map(v => v === null || v === undefined ? null : v / 1e9);
+        const barColors = cumulative.map(v => v === null ? 'rgba(108, 117, 125, 0.2)' : v >= 0 ? 'rgba(25, 135, 84, 0.6)' : 'rgba(220, 53, 69, 0.6)');
+        upsertChart('flows', 'flowsChart', {
+            type: 'bar',
+            data: {
+                labels: data.flows.labels,
+                datasets: [{
+                    label: 'جریان تجمعی (میلیارد ریال)',
+                    data: cumulative,
+                    backgroundColor: barColors,
+                    borderRadius: 2,
+                }],
+            },
+            options: baseChartOptions,
+        });
+    }
+}
+
+
 async function loadFundChart(regNo) {
     const chartContainer = document.getElementById('fundChart');
     const loadingEl = document.getElementById('chart-loading');
@@ -50,6 +175,7 @@ async function loadFundChart(regNo) {
         statusEl.className = `small mb-2 ${data.has_changes_in_window ? 'text-success' : 'text-muted'}`;
         statusEl.style.display = 'block';
         renderInteractiveFundChart(chartContainer, points, 30);
+        renderAnalyticsCharts(data);
 
         // Update last updated time
         if (data.fund && data.fund.last_updated) {

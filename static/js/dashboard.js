@@ -222,11 +222,103 @@ async function loadDataQuality() {
 }
 
 
+async function loadRiskReturn() {
+    const container = document.getElementById("risk-return-container");
+    if (!container) {
+        return;
+    }
+
+    try {
+        const data = await fetchJSON("/api/dashboard/risk-return");
+
+        if (!data.length) {
+            container.innerHTML =
+                `<div class="empty-state text-center p-5 text-muted">داده‌ای برای نقشه ریسک/بازده موجود نیست.</div>`;
+            return;
+        }
+
+        const maxAum = Math.max(...data.map(item => item.aum || 0), 1);
+        const points = data.map(item => ({
+            x: item.volatility,
+            y: item.return_90d,
+            r: 3 + 11 * Math.sqrt((item.aum || 0) / maxAum),
+            reg_no: item.reg_no,
+            name: item.name,
+            aum: item.aum,
+            volatility: item.volatility,
+            return_90d: item.return_90d,
+        }));
+
+        if (window.riskReturnChart) {
+            window.riskReturnChart.destroy();
+        }
+
+        window.riskReturnChart = new Chart(container, {
+            type: "bubble",
+            data: {
+                datasets: [{
+                    label: "صندوق‌های سهامی",
+                    data: points,
+                    backgroundColor: points.map(p =>
+                        p.y >= 0
+                            ? "rgba(25, 135, 84, 0.45)"
+                            : "rgba(220, 53, 69, 0.45)"
+                    ),
+                    borderColor: points.map(p =>
+                        p.y >= 0 ? "#198754" : "#dc3545"
+                    ),
+                    borderWidth: 1,
+                }],
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    x: {
+                        title: { display: true, text: "نوسان سالانه (%)", font: { family: "Tahoma" } },
+                        ticks: { font: { family: "Tahoma" } },
+                    },
+                    y: {
+                        title: { display: true, text: "بازده ۹۰ روزه (%)", font: { family: "Tahoma" } },
+                        ticks: { font: { family: "Tahoma" } },
+                    },
+                },
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            title: items => items[0].raw.name || "",
+                            label: item => [
+                                "بازده ۹۰ روزه: " + item.raw.return_90d + "%",
+                                "نوسان سالانه: " + item.raw.volatility + "%",
+                                "ارزش دارایی: " + (item.raw.aum / 1e9).toFixed(1) + " میلیارد تومان",
+                            ],
+                        },
+                    },
+                },
+                onClick: (event, elements) => {
+                    if (elements.length) {
+                        const index = elements[0].index;
+                        window.location.href = `/fund/${points[index].reg_no}`;
+                    }
+                },
+            },
+        });
+
+    } catch (error) {
+        console.error("Risk/return loading failed:", error);
+        container.innerHTML =
+            `<div class="error-state text-center p-5 text-danger">دریافت نقشه ریسک/بازده ناموفق بود.</div>`;
+    }
+}
+
+
 document.addEventListener("DOMContentLoaded", () => {
     loadTopFunds();
     loadHeatmap();
     loadMarketPulse();
     loadDataQuality();
+    loadRiskReturn();
     setInterval(loadMarketPulse, 60000);
     setInterval(loadDataQuality, 60000);
 });
