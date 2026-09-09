@@ -163,53 +163,83 @@ class TSETMCProvider:
 
         return results
 
-    def fetch_etf_nav(self, ins_code: str) -> dict | None:
-        """دریافت NAV لحظه‌ای ETF از API اختصاصی."""
+    def fetch_etf_nav(self, ins_code: str) -> dict:
+        """
+        دریافت NAV لحظه‌ای ETF.
+        مهندسی: این اندپوینت بورس برای بعضی نمادها 500 می‌دهد، پس از
+        request_with_retry استفاده نمی‌کنیم تا Circuit Breaker اصلی را آلوده نکنیم.
+        """
         url = (
             f"{self.base_url}/Fund/"
             f"GetETFByInsCode/{ins_code}"
         )
 
         try:
-            response = request_with_retry(
+            response = requests.get(
                 url,
                 headers=self.headers,
-                timeout=self.timeout,
-                retries=self.max_retries,
+                timeout=5,
             )
-            data = response.json()
         except requests.RequestException:
-            logger.exception(
-                "Failed to fetch ETF NAV for %s",
+            logger.debug(
+                "Timeout/error fetching ETF NAV for %s. Skipping...",
                 ins_code,
             )
-            return None
+            return {}
+
+        if response.status_code != 200:
+            logger.debug(
+                "TSETMC returned %s for ETF NAV %s. Using fallback DB data.",
+                response.status_code,
+                ins_code,
+            )
+            return {}
+
+        try:
+            data = response.json()
+        except ValueError:
+            return {}
 
         if not isinstance(data, dict):
-            return None
+            return {}
 
-        return data.get("etf")
+        return data.get("etf") or {}
 
     def fetch_etf_instrument_info(self, ins_code: str) -> dict | None:
-        """دریافت اطلاعات ابزار شامل NAV از API Instrument Info."""
+        """
+        دریافت اطلاعات ابزار شامل NAV از API Instrument Info.
+        مهندسی: این اندپوینت هم ناپایدار است و از request_with_retry
+        استفاده نمی‌کنیم تا Circuit Breaker اصلی را آلوده نکنیم.
+        """
         url = (
             f"{self.base_url}/Instrument/"
             f"GetInstrumentInfo/{ins_code}"
         )
 
         try:
-            response = request_with_retry(
+            response = requests.get(
                 url,
                 headers=self.headers,
-                timeout=self.timeout,
-                retries=self.max_retries,
+                timeout=5,
             )
-            data = response.json()
         except requests.RequestException:
-            logger.exception(
-                "Failed to fetch ETF instrument info for %s",
+            logger.debug(
+                "Timeout/error fetching ETF instrument info for %s. Skipping...",
                 ins_code,
             )
+            return None
+
+        if response.status_code != 200:
+            logger.debug(
+                "TSETMC returned %s for ETF instrument info %s. Skipping...",
+                response.status_code,
+                ins_code,
+            )
+            return None
+
+        try:
+            data = response.json()
+        except ValueError:
             return None
 
         if not isinstance(data, dict):
@@ -226,93 +256,6 @@ class TSETMCProvider:
             "symbol": instrument_info.get("lVal18AFC"),
             "ins_code": instrument_info.get("insCode"),
         }
-
-    def fetch_etf_history(
-        self,
-        ins_code: str,
-        days: int = 365,
-    ) -> list:
-        """دریافت تاریخچه روزانه ETF و محدودکردن آن به پنجره زمانی واقعی."""
-        from datetime import timedelta
-        from dateutil import parser
-
-        url = (
-            f"{self.base_url}/ClosingPrice/"
-            f"GetClosingPriceDailyList/"
-            f"{ins_code}/0"
-        )
-
-        try:
-            response = request_with_retry(
-                url,
-                headers=self.headers,
-                timeout=self.timeout,
-                retries=self.max_retries,
-            )
-            data = response.json()
-        except requests.RequestException:
-            logger.exception(
-                "Failed to fetch ETF history %s",
-                ins_code,
-            )
-            return []
-
-        if not isinstance(data, dict):
-            return []
-
-        records = data.get("closingPriceDaily", [])
-
-        if not isinstance(records, list):
-            return []
-
-        cutoff = iran_time() - timedelta(days=days)
-
-        filtered = []
-
-        for item in records:
-            record_date = item.get("dEven") or item.get("recordDate")
-            if not record_date:
-                continue
-
-            try:
-                observed_at = parser.parse(str(record_date)).replace(tzinfo=None)
-            except (TypeError, ValueError, OverflowError):
-                continue
-
-            if observed_at >= cutoff:
-                filtered.append((observed_at, item))
-
-        filtered.sort(key=lambda x: x[0])
-
-        return [item for _, item in filtered]
-
-    def fetch_fund_history_detail(self, reg_no: int) -> list:
-        """گرفتن تاریخچه صندوق برای bootstrap/backfill."""
-        url = f"{self.base_url}/Fund/GetFundInDetail/{reg_no}"
-
-        try:
-            response = request_with_retry(
-                url,
-                headers=self.headers,
-                timeout=self.timeout,
-                retries=self.max_retries,
-            )
-            data = response.json()
-            logger.info("Fund %s history detail response keys: %s", reg_no, list(data.keys()) if isinstance(data, dict) else type(data))
-            if isinstance(data, dict) and "fund" in data:
-                fund_obj = data["fund"]
-                logger.info("Fund %s fund object keys: %s", reg_no, list(fund_obj.keys()) if isinstance(fund_obj, dict) else type(data))
-                if isinstance(fund_obj, dict) and "stats" in fund_obj:
-                    logger.info("Fund %s stats length: %s", reg_no, len(fund_obj["stats"]))
-        except requests.RequestException:
-            logger.exception("Failed to fetch history for fund %s", reg_no)
-            return []
-
-        history = data.get("fund", {}).get("stats", [])
-
-        logger.info("Fund %s fetched %s history records", reg_no, len(history))
-
-        return history
 
     def fetch_index_history(
         self,
@@ -353,18 +296,29 @@ class TSETMCProvider:
         )
 
         try:
-            response = request_with_retry(
+            response = requests.get(
                 url,
                 headers=self.headers,
-                timeout=self.timeout,
-                retries=self.max_retries,
+                timeout=5,
             )
-            data = response.json()
         except requests.RequestException:
-            logger.exception(
-                "Failed to fetch instrument identity %s",
+            logger.debug(
+                "Timeout/error fetching instrument identity %s. Skipping...",
                 ins_code,
             )
+            return None
+
+        if response.status_code != 200:
+            logger.debug(
+                "TSETMC returned %s for instrument identity %s. Skipping...",
+                response.status_code,
+                ins_code,
+            )
+            return None
+
+        try:
+            data = response.json()
+        except ValueError:
             return None
 
         if not isinstance(data, dict):
@@ -383,18 +337,29 @@ class TSETMCProvider:
         )
 
         try:
-            response = request_with_retry(
+            response = requests.get(
                 url,
                 headers=self.headers,
-                timeout=self.timeout,
-                retries=self.max_retries,
+                timeout=5,
             )
-            data = response.json()
         except requests.RequestException:
-            logger.exception(
-                "Failed to fetch instrument state %s",
+            logger.debug(
+                "Timeout/error fetching instrument state %s. Skipping...",
                 ins_code,
             )
+            return None
+
+        if response.status_code != 200:
+            logger.debug(
+                "TSETMC returned %s for instrument state %s. Skipping...",
+                response.status_code,
+                ins_code,
+            )
+            return None
+
+        try:
+            data = response.json()
+        except ValueError:
             return None
 
         if not isinstance(data, dict):
