@@ -61,6 +61,29 @@ async function loadFundChart(regNo) {
             document.getElementById('nav_stat').textContent = data.fund.nav_stat.toLocaleString();
         }
 
+        // Update risk metrics
+        if (data.risk) {
+            const volatilityEl = document.getElementById('risk_volatility');
+            const sharpeEl = document.getElementById('risk_sharpe');
+            const drawdownEl = document.getElementById('risk_drawdown');
+
+            if (volatilityEl) {
+                volatilityEl.textContent = data.risk.volatility !== null && data.risk.volatility !== undefined
+                    ? (data.risk.volatility * 100).toFixed(2) + '%'
+                    : '-';
+            }
+            if (sharpeEl) {
+                sharpeEl.textContent = data.risk.sharpe_ratio !== null && data.risk.sharpe_ratio !== undefined
+                    ? data.risk.sharpe_ratio.toFixed(2)
+                    : '-';
+            }
+            if (drawdownEl) {
+                drawdownEl.textContent = data.risk.max_drawdown !== null && data.risk.max_drawdown !== undefined
+                    ? (data.risk.max_drawdown * 100).toFixed(2) + '%'
+                    : '-';
+            }
+        }
+
     } catch (error) {
         console.error("Fund chart loading failed:", error);
         loadingEl.style.display = 'none';

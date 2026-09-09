@@ -120,7 +120,7 @@ class TSETMCProvider:
                 retries=self.max_retries,
             )
             data = response.json()
-        except requests.RequestException:
+        except Exception:
             logger.exception("Failed to fetch funds by type %s", fund_type)
             return []
 

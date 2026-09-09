@@ -19,10 +19,13 @@ def test_fetch_funds_by_type_success(mocker):
 
 def test_fetch_funds_by_type_error(mocker):
     # شبیه‌سازی خطای سرور (TimeOut یا 500)
-    mock_get = mocker.patch("services.providers.requests.get", side_effect=Exception("Timeout"))
-    
+    mock_get = mocker.patch(
+        "services.providers.requests.get",
+        side_effect=Exception("Timeout")
+    )
+
     provider = TSETMCProvider()
     result = provider.fetch_funds_by_type(6)
-    
+
     # وقتی بورس خطا بدهد، کد ما نباید کرش کند، باید لیست خالی برگرداند
     assert result == []

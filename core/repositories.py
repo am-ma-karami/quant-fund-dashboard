@@ -1,5 +1,6 @@
 from sqlalchemy.orm import Session
 from core.models import Fund, FundHistory, HistoryBackfillState, ETFMarket, ETFMarketHistory
+from services.risk import returns_from_prices, annualized_volatility, sharpe_ratio, maximum_drawdown
 from datetime import datetime
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
@@ -205,6 +206,40 @@ class FundRepository:
             )
             .first()
         )
+
+    def get_fund_risk_metrics(self, reg_no: int):
+        """محاسبه معیارهای ریسک از تاریخچه NAV صندوق."""
+        histories = (
+            self.db.query(FundHistory)
+            .filter(FundHistory.fund_reg_no == reg_no)
+            .order_by(FundHistory.observed_at.asc())
+            .limit(252)
+            .all()
+        )
+
+        if len(histories) < 2:
+            return {
+                "volatility": None,
+                "sharpe_ratio": None,
+                "max_drawdown": None,
+            }
+
+        prices = [h.nav_stat for h in histories if h.nav_stat is not None and h.nav_stat > 0]
+
+        if len(prices) < 2:
+            return {
+                "volatility": None,
+                "sharpe_ratio": None,
+                "max_drawdown": None,
+            }
+
+        returns = returns_from_prices(prices)
+
+        return {
+            "volatility": annualized_volatility(returns),
+            "sharpe_ratio": sharpe_ratio(returns),
+            "max_drawdown": maximum_drawdown(prices),
+        }
 
     def get_funds_with_insufficient_history(self, min_days: int = 5, limit: int = 20):
         """صندوق‌هایی که تاریخچه ندارند یا آخرین رکوردشان قدیمی است"""

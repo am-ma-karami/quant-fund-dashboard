@@ -194,9 +194,39 @@ async function loadMarketPulse() {
 }
 
 
+async function loadDataQuality() {
+    try {
+        const data = await fetchJSON("/api/health/data");
+
+        const setText = (id, value) => {
+            const el = document.getElementById(id);
+            if (el) el.textContent = value;
+        };
+
+        setText("dq_status", data.status);
+        setText("dq_expected", data.expected_funds);
+        setText("dq_received", data.received_funds);
+        setText("dq_coverage", (data.coverage * 100).toFixed(1) + "%");
+
+        const statusEl = document.getElementById("dq_status");
+        if (statusEl) {
+            statusEl.className = `fs-5 fw-bold ${
+                data.status === "healthy" ? "text-success" :
+                data.status === "partial" ? "text-warning" : "text-danger"
+            }`;
+        }
+
+    } catch (error) {
+        console.error("Data quality loading failed:", error);
+    }
+}
+
+
 document.addEventListener("DOMContentLoaded", () => {
     loadTopFunds();
     loadHeatmap();
     loadMarketPulse();
+    loadDataQuality();
     setInterval(loadMarketPulse, 60000);
+    setInterval(loadDataQuality, 60000);
 });

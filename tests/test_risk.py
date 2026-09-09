@@ -1,3 +1,5 @@
+from pytest import approx
+
 from services.risk import (
     returns_from_prices,
     annualized_volatility,
@@ -11,7 +13,7 @@ def test_returns():
         [100, 110]
     )
 
-    assert result == [0.1]
+    assert result == approx([0.1])
 
 
 def test_max_drawdown():

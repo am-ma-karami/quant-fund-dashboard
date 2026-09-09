@@ -102,6 +102,8 @@ def api_get_etfs(db: Session = Depends(get_db)):
         "ins_code": e.ins_code, "symbol": e.symbol, "name": e.name,
         "last_price": e.last_price, "closing_price": e.closing_price,
         "price_change": e.price_change, "total_trades": e.total_trades,
+        "total_volume": e.total_volume, "total_value": e.total_value,
+        "nav": e.nav, "premium_discount": e.premium_discount,
         "last_updated": e.last_updated.strftime('%H:%M:%S') if e.last_updated else ""
     } for e in etfs]
 
@@ -148,6 +150,8 @@ def api_fund_chart(reg_no: int, db: Session = Depends(get_db)):
             "is_live": True,
         })
 
+    risk_metrics = repo.get_fund_risk_metrics(reg_no)
+
     return {
         "fund": {
             "reg_no": fund.reg_no,
@@ -161,6 +165,7 @@ def api_fund_chart(reg_no: int, db: Session = Depends(get_db)):
                 else None
             )
         },
+        "risk": risk_metrics,
         "history": chart_history,
         "window_start": cutoff.isoformat(),
         "has_changes_in_window": bool(recent_histories),
@@ -171,7 +176,7 @@ def api_fund_chart(reg_no: int, db: Session = Depends(get_db)):
 def api_etf_chart(ins_code: str, db: Session = Depends(get_db)):
     repo = ETFRepository(db)
     etf = repo.get_etf_by_ins_code(ins_code)
-    
+
     if etf is None:
         raise HTTPException(
             status_code=404,
@@ -180,18 +185,6 @@ def api_etf_chart(ins_code: str, db: Session = Depends(get_db)):
 
     # گرفتن تاریخچه نوسانات امروز
     histories = repo.get_etf_history(ins_code)
-    
-    # پیدا کردن صندوق متناظر برای محاسبه حباب لحظه‌ای (Premium)
-    # جستجو بر اساس نام/نماد مشابه
-    fund = db.query(Fund).filter(Fund.name.ilike(f"%{etf.name}%")).first()
-    if not fund and etf.symbol:
-        fund = db.query(Fund).filter(Fund.name.ilike(f"%{etf.symbol}%")).first()
-    
-    premium = 0
-    nav_stat = 0
-    if fund and fund.nav_stat and etf.last_price:
-        nav_stat = fund.nav_stat
-        premium = ((etf.last_price - nav_stat) / nav_stat) * 100
 
     return {
         "labels": [h.observed_at.strftime('%H:%M') for h in histories],
@@ -200,8 +193,14 @@ def api_etf_chart(ins_code: str, db: Session = Depends(get_db)):
         "closing_price": etf.closing_price,
         "price_change": etf.price_change,
         "total_trades": etf.total_trades,
-        "nav_stat": nav_stat,
-        "premium": round(premium, 2),
+        "total_volume": etf.total_volume,
+        "total_value": etf.total_value,
+        "price_min": etf.price_min,
+        "price_max": etf.price_max,
+        "price_first": etf.price_first,
+        "price_yesterday": etf.price_yesterday,
+        "nav": etf.nav,
+        "premium": etf.premium_discount,
         "last_updated": etf.last_updated.strftime('%H:%M:%S') if etf.last_updated else ""
     }
 
@@ -316,6 +315,51 @@ def api_screener_data(db: Session = Depends(get_db)):
 def health():
     return {
         "status": "ok"
+    }
+
+
+@router.get("/api/health/data")
+def api_data_quality(
+    db: Session = Depends(get_db),
+):
+    """وضعیت کیفیت داده و پوشش آخرین سینک صندوق‌ها."""
+    from core.models import SyncStatus
+
+    status = db.query(SyncStatus).filter(
+        SyncStatus.job_name == "fund_sync"
+    ).first()
+
+    if not status:
+        return {
+            "status": "unknown",
+            "expected_funds": 0,
+            "received_funds": 0,
+            "valid_funds": 0,
+            "coverage": 0.0,
+            "failed_funds": 0,
+            "last_successful_sync": None,
+            "latency_ms": None,
+            "provider": "TSETMC",
+        }
+
+    expected = status.expected_count or 0
+    received = status.received_count or 0
+    coverage = (received / expected) if expected > 0 else 0.0
+
+    return {
+        "status": status.status,
+        "expected_funds": expected,
+        "received_funds": received,
+        "valid_funds": status.valid_count or 0,
+        "coverage": round(coverage, 4),
+        "failed_funds": status.failed_count or 0,
+        "last_successful_sync": (
+            status.last_success_at.isoformat()
+            if status.last_success_at
+            else None
+        ),
+        "latency_ms": status.duration_ms,
+        "provider": status.provider or "TSETMC",
     }
 
 

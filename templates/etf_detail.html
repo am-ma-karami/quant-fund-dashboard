@@ -139,11 +139,14 @@
                 document.getElementById('last_updated').innerText = data.last_updated;
                 
                 // آپدیت باکس حباب
-                document.getElementById('nav_stat').innerText = data.nav_stat ? data.nav_stat.toLocaleString() + " ریال" : "نامشخص";
+                document.getElementById('nav_stat').innerText = data.nav ? data.nav.toLocaleString() + " ریال" : "نامشخص";
                 let badge = document.getElementById('premium_badge');
-                if(data.premium !== null) {
+                if(data.premium !== null && data.premium !== undefined) {
                     badge.innerText = Math.abs(data.premium) + "% " + (data.premium > 0 ? "حباب مثبت" : "تخفیف (Discount)");
                     badge.className = data.premium > 0 ? "badge bg-danger p-2" : "badge bg-success p-2";
+                } else {
+                    badge.innerText = "نامشخص";
+                    badge.className = "badge bg-secondary p-2";
                 }
             });
     }

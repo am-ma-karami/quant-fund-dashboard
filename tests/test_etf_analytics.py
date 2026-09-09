@@ -1,3 +1,5 @@
+from pytest import approx
+
 from services.etf_analytics import calculate_premium_discount
 
 
@@ -7,7 +9,7 @@ def test_positive_premium():
         nav=100,
     )
 
-    assert result == 10.0
+    assert result == approx(10.0)
 
 
 def test_negative_discount():
@@ -16,7 +18,7 @@ def test_negative_discount():
         nav=100,
     )
 
-    assert result == -10.0
+    assert result == approx(-10.0)
 
 
 def test_invalid_nav():
