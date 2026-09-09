@@ -1,15 +1,18 @@
 import logging
 from datetime import datetime, timedelta
-from dateutil import parser # pip install python-dateutil
+from dateutil import parser
 from core.database import SessionLocal
 from core.repositories import FundRepository
+from core.models import SyncStatus
 from services.providers import TSETMCProvider
 from services.preprocessing import clean_fund_data
 from services.cache_service import invalidate_dashboard_cache
+from services.data_quality import calculate_coverage
 
 logger = logging.getLogger(__name__)
 provider = TSETMCProvider()
 FUND_TYPES = [4, 5, 6, 7, 11, 12, 13, 14, 16, 17]
+
 
 def sync_funds_pipeline():
     logger.info("Starting Data Pipeline Sync...")
@@ -17,11 +20,15 @@ def sync_funds_pipeline():
     db = SessionLocal()
     fund_repo = FundRepository(db)
 
+    started_at = datetime.utcnow()
+
     try:
-        total_updated = 0
+        total_expected = 0
+        total_received = 0
+        total_valid = 0
+        total_failed = 0
 
         for f_type in FUND_TYPES:
-
             logger.info(
                 "Fetching funds for category %s",
                 f_type
@@ -36,7 +43,10 @@ def sync_funds_pipeline():
                 )
                 continue
 
+            total_expected += len(funds_data)
+
             for item in funds_data:
+                total_received += 1
 
                 try:
                     clean_item = clean_fund_data(item)
@@ -44,6 +54,7 @@ def sync_funds_pipeline():
                     reg_no = clean_item["reg_no"]
 
                     if not reg_no:
+                        total_failed += 1
                         continue
 
                     fund_repo.upsert_fund(
@@ -61,25 +72,57 @@ def sync_funds_pipeline():
                         fund_repo.upsert_fund_history(
                             reg_no=reg_no,
                             nav_stat=clean_item["nav_stat"],
+                            nav_sub=clean_item["nav_sub"],
+                            nav_red=clean_item["nav_red"],
                             net_asset=clean_item["net_asset"],
+                            units=clean_item["units"],
                             observed_at=observed_at
                         )
 
-                    total_updated += 1
+                    total_valid += 1
 
                 except Exception:
+                    total_failed += 1
                     logger.exception(
                         "Failed processing fund item"
                     )
                     continue
 
         db.commit()
-        
+
+        coverage = calculate_coverage(
+            expected=total_expected,
+            received=total_received,
+        )
+
+        status = db.query(SyncStatus).filter(
+            SyncStatus.job_name == "fund_sync"
+        ).first()
+        if not status:
+            status = SyncStatus(job_name="fund_sync")
+            db.add(status)
+
+        status.status = "healthy" if total_failed == 0 else "partial"
+        status.started_at = started_at
+        status.finished_at = datetime.utcnow()
+        status.expected_count = total_expected
+        status.received_count = total_received
+        status.valid_count = total_valid
+        status.updated_count = total_valid
+        status.failed_count = total_failed
+        status.duration_ms = int((datetime.utcnow() - started_at).total_seconds() * 1000)
+        status.last_success_at = datetime.utcnow() if total_failed == 0 else status.last_success_at
+        status.provider = "TSETMC"
+        status.error_message = None if total_failed == 0 else f"{total_failed} funds failed validation"
+
+        db.commit()
+
         invalidate_dashboard_cache()
 
         logger.info(
-            "Pipeline Sync Completed. Updated %s funds.",
-            total_updated
+            "Pipeline Sync Completed. Updated %s funds. Coverage: %.1f%%",
+            total_valid,
+            coverage * 100
         )
 
     except Exception:

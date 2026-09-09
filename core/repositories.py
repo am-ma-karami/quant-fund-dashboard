@@ -65,8 +65,25 @@ class FundRepository:
         fund.last_updated = iran_time()
         return fund
 
-    def add_fund_history(self, reg_no: int, nav_stat: float, net_asset: float,observed_at=None):
-        history = FundHistory(fund_reg_no=reg_no, nav_stat=nav_stat, net_asset=net_asset, observed_at=observed_at or iran_time())        
+    def add_fund_history(
+        self,
+        reg_no: int,
+        nav_stat: float,
+        net_asset: float,
+        observed_at=None,
+        nav_sub: float = None,
+        nav_red: float = None,
+        units: float = None,
+    ):
+        history = FundHistory(
+            fund_reg_no=reg_no,
+            nav_stat=nav_stat,
+            nav_sub=nav_sub,
+            nav_red=nav_red,
+            net_asset=net_asset,
+            units=units,
+            observed_at=observed_at or iran_time()
+        )
         self.db.add(history)
 
     def get_heatmap_data(self, limit: int = 50):
@@ -223,26 +240,41 @@ class FundRepository:
             .all()
         )
 
-    def upsert_fund_history(self, reg_no: int, nav_stat: float, net_asset: float, observed_at: datetime):
+    def upsert_fund_history(
+        self,
+        reg_no: int,
+        nav_stat: float,
+        net_asset: float,
+        observed_at: datetime,
+        nav_sub: float = None,
+        nav_red: float = None,
+        units: float = None,
+    ):
         """
         استفاده از قابلیت بومی PostgreSQL برای سرعت بی‌نهایت و جلوگیری از ارور Duplicate Key
         """
         stmt = pg_insert(FundHistory).values(
             fund_reg_no=reg_no,
             nav_stat=nav_stat,
+            nav_sub=nav_sub,
+            nav_red=nav_red,
             net_asset=net_asset,
+            units=units,
             observed_at=observed_at
         )
-        
+
         # اگر رکورد با این تاریخ قبلاً وجود داشت، فقط مقادیر آن را آپدیت کن
         stmt = stmt.on_conflict_do_update(
             index_elements=['fund_reg_no', 'observed_at'],
             set_=dict(
                 nav_stat=stmt.excluded.nav_stat,
-                net_asset=stmt.excluded.net_asset
+                nav_sub=stmt.excluded.nav_sub,
+                nav_red=stmt.excluded.nav_red,
+                net_asset=stmt.excluded.net_asset,
+                units=stmt.excluded.units,
             )
         )
-        
+
         self.db.execute(stmt)
 
 

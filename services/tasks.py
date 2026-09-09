@@ -48,7 +48,10 @@ def update_funds_data():
                     fund_repo.upsert_fund_history(
                         reg_no=reg_no,
                         nav_stat=clean_item["nav_stat"],
+                        nav_sub=clean_item["nav_sub"],
+                        nav_red=clean_item["nav_red"],
                         net_asset=clean_item["net_asset"],
+                        units=clean_item["units"],
                         observed_at=observed_at,
                     )
 

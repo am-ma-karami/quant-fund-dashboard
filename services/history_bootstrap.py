@@ -94,8 +94,11 @@ def bootstrap_fund_history(reg_no: int, days: int = HISTORY_DAYS):
 
             repo.upsert_fund_history(
                 reg_no=reg_no,
-                nav_stat=item.get("navStat") or 0.0,
-                net_asset=item.get("netAsset") or 0.0,
+                nav_stat=item.get("navStat"),
+                nav_sub=item.get("navSub"),
+                nav_red=item.get("navRed"),
+                net_asset=item.get("netAsset"),
+                units=item.get("units"),
                 observed_at=observed_at
             )
 
@@ -168,8 +171,11 @@ def backfill_single_fund():
             
             fund_repo.upsert_fund_history(
                 reg_no=reg_no,
-                nav_stat=item.get("navStat") or 0.0,
-                net_asset=item.get("netAsset") or 0.0,
+                nav_stat=item.get("navStat"),
+                nav_sub=item.get("navSub"),
+                nav_red=item.get("navRed"),
+                net_asset=item.get("netAsset"),
+                units=item.get("units"),
                 observed_at=observed_at
             )
             
