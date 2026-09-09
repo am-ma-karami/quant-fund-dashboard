@@ -69,18 +69,6 @@ def sync_funds_pipeline(
                         clean_item
                     )
 
-                    fund = fund_repo.get_fund_by_reg_no(reg_no)
-
-                    if fund and (not fund.symbol or not fund.sector):
-                        identity = provider.fetch_instrument_identity(reg_no)
-
-                        if identity:
-                            fund.symbol = identity.get("symbol") or identity.get("lVal18AFC")
-                            fund.sector = identity.get("sector") or identity.get("sectorName")
-                            fund.subsector = identity.get("subSector") or identity.get("subSectorName")
-                            fund.market = identity.get("market")
-                            fund.instrument_status = identity.get("status")
-
                     record_date_str = item.get("recordDate")
 
                     if record_date_str:

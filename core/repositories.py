@@ -46,6 +46,7 @@ class FundRepository:
         if not fund:
             fund = Fund(reg_no=reg_no, name=name, fund_type=fund_type)
             self.db.add(fund)
+            self.db.flush()
             
         fund.nav_stat = clean_data['nav_stat']
         fund.nav_sub = clean_data['nav_sub']

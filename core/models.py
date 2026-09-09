@@ -43,7 +43,7 @@ class Fund(Base):
     portfolio_other = Column(Float, nullable=True)
 
     ins_code = Column(String, nullable=True, index=True)
-    is_etf = Column(String, nullable=True, default=False)
+    is_etf = Column(String, nullable=True, default="false")
 
     volatility = Column(Float, nullable=True)
     sharpe_ratio = Column(Float, nullable=True)

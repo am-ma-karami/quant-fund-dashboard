@@ -5,6 +5,7 @@ from dateutil import parser
 
 from core.database import SessionLocal
 from core.repositories import FundRepository, ETFRepository
+from core.models import Fund
 from services.providers import TSETMCProvider
 from services.preprocessing import clean_fund_data
 from services.etf_analytics import calculate_premium_discount
