@@ -62,16 +62,17 @@
                 [etf.name, 'small'],
                 [formatNumber(etf.last_price), 'fw-bold'],
                 [formatNumber(etf.closing_price), ''],
-                [formatNumber(etf.nav), ''],
-                [etf.premium_discount !== null && etf.premium_discount !== undefined ? (etf.premium_discount > 0 ? '+' : '') + etf.premium_discount.toFixed(2) + '%' : '-'],
+                [formatNumber(etf.nav_stat), 'fw-bold text-dark'],
+                [etf.premium !== null && etf.premium !== undefined ? (etf.premium > 0 ? '+' : '') + etf.premium.toFixed(2) + '%' : '-', etf.premium > 0 ? 'text-danger' : (etf.premium < 0 ? 'text-success' : '')],
                 [formatNumber(etf.price_change), changeClass],
                 [formatNumber(etf.total_trades), ''],
                 [etf.last_updated, 'small text-muted'],
             ];
             cells.forEach(([value, className], index) => {
                 const td = document.createElement('td');
-                td.className = className;
-                if (index === 4) td.dir = 'ltr';
+                if className:
+                    td.className = className;
+                if (index === 4 || index === 5) td.dir = 'ltr';
                 td.textContent = value;
                 tr.appendChild(td);
             });

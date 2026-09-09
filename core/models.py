@@ -39,7 +39,11 @@ class Fund(Base):
     day365_return = Column(Float, nullable=True)
     portfolio_stock = Column(Float, nullable=True)
     portfolio_bond = Column(Float, nullable=True)
-    portfolio_deposit = Column(Float, nullable=True)
+    portfolio_cash = Column(Float, nullable=True)
+    portfolio_other = Column(Float, nullable=True)
+
+    ins_code = Column(String, nullable=True, index=True)
+    is_etf = Column(String, nullable=True, default=False)
 
     volatility = Column(Float, nullable=True)
     sharpe_ratio = Column(Float, nullable=True)
@@ -50,13 +54,14 @@ class Fund(Base):
 
     @property
     def risk_profile(self):
-        """محاسبه سطح ریسک بر اساس ترکیب دارایی (Quant Approach)"""
+        """محاسبه سطح ریسک بر اساس ترکیب دارایی واقعی"""
         stock = self.portfolio_stock or 0
         bond = self.portfolio_bond or 0
+        other = self.portfolio_other or 0
 
         if stock >= 65:
             return {"level": "High (پرریسک)", "color": "danger", "score": 8}
-        elif stock >= 30:
+        elif stock >= 30 or other >= 40:
             return {"level": "Medium (متوسط)", "color": "warning", "score": 5}
         elif bond >= 70:
             return {"level": "Low (کم‌ریسک)", "color": "success", "score": 2}

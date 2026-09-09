@@ -61,7 +61,8 @@ class FundRepository:
         fund.day180_return = clean_data['day180_return']
         fund.portfolio_stock = clean_data['portfolio_stock']
         fund.portfolio_bond = clean_data['portfolio_bond']
-        fund.portfolio_deposit = clean_data['portfolio_deposit']
+        fund.portfolio_cash = clean_data['portfolio_cash']
+        fund.portfolio_other = clean_data['portfolio_other']
         fund.fund_type = fund_type
         fund.last_updated = iran_time()
         return fund

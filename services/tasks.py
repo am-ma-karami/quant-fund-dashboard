@@ -132,6 +132,18 @@ def update_etf_market_data():
                     etf.market = identity.get("market")
                     etf.instrument_status = identity.get("status")
 
+            fund = db.query(Fund).filter(Fund.ins_code == ins_code).first()
+            if not fund:
+                from services.preprocessing import normalize_fund_name
+                norm_symbol = normalize_fund_name(symbol)
+
+                for u_fund in db.query(Fund).filter(Fund.ins_code == None).all():
+                    norm_fund_name = normalize_fund_name(u_fund.name)
+                    if norm_symbol and norm_symbol in norm_fund_name:
+                        u_fund.ins_code = ins_code
+                        u_fund.is_etf = "true"
+                        break
+
             etf_repo.add_etf_history(ins_code, data, observed_at=iran_time())
             
         db.commit()

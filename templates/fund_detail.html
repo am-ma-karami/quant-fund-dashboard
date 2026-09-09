@@ -138,13 +138,22 @@
                         <div class="progress-bar bg-info progress-bar-striped" style="width: {{ fund.portfolio_bond or 0 }}%"></div>
                     </div>
                 </div>
-                <div class="mb-2">
+                <div class="mb-3">
                     <div class="d-flex justify-content-between small mb-1 fw-bold">
-                        <span class="text-warning">سپرده نقد (بدون ریسک)</span>
-                        <span>{{ fund.portfolio_deposit or 0 }}%</span>
+                        <span class="text-success">سپرده / نقد (بدون ریسک)</span>
+                        <span>{{ fund.portfolio_cash or 0 }}%</span>
                     </div>
                     <div class="progress" style="height: 12px;">
-                        <div class="progress-bar bg-warning progress-bar-striped" style="width: {{ fund.portfolio_deposit or 0 }}%"></div>
+                        <div class="progress-bar bg-success progress-bar-striped" style="width: {{ fund.portfolio_cash or 0 }}%"></div>
+                    </div>
+                </div>
+                <div class="mb-2">
+                    <div class="d-flex justify-content-between small mb-1 fw-bold">
+                        <span class="text-warning">سایر دارایی‌ها (طلا، کالا و ...)</span>
+                        <span>{{ fund.portfolio_other or 0 }}%</span>
+                    </div>
+                    <div class="progress" style="height: 12px;">
+                        <div class="progress-bar bg-warning progress-bar-striped" style="width: {{ fund.portfolio_other or 0 }}%"></div>
                     </div>
                 </div>
             </div>

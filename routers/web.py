@@ -100,15 +100,25 @@ def read_etf_detail(request: Request, ins_code: str, db: Session = Depends(get_d
 def api_get_etfs(db: Session = Depends(get_db)):
     repo = ETFRepository(db)
     etfs = repo.get_all_etfs()
-    return [{
-        "ins_code": e.ins_code, "symbol": e.symbol, "name": e.name,
-        "last_price": e.last_price, "closing_price": e.closing_price,
-        "price_change": e.price_change, "total_trades": e.total_trades,
-        "total_volume": e.total_volume, "total_value": e.total_value,
-        "nav": e.nav, "nav_red": e.nav_red, "nav_sub": e.nav_sub,
-        "premium_discount": e.premium_discount,
-        "last_updated": e.last_updated.strftime('%H:%M:%S') if e.last_updated else ""
-    } for e in etfs]
+
+    result = []
+    for e in etfs:
+        fund = db.query(Fund).filter(Fund.ins_code == e.ins_code).first()
+        nav_stat = fund.nav_stat if fund else None
+
+        premium = None
+        if nav_stat and nav_stat > 0 and e.last_price:
+            premium = ((e.last_price - nav_stat) / nav_stat) * 100
+
+        result.append({
+            "ins_code": e.ins_code, "symbol": e.symbol, "name": e.name,
+            "last_price": e.last_price, "closing_price": e.closing_price,
+            "price_change": e.price_change, "total_trades": e.total_trades,
+            "nav_stat": nav_stat,
+            "premium": round(premium, 2) if premium else None,
+            "last_updated": e.last_updated.strftime('%H:%M:%S') if e.last_updated else ""
+        })
+    return result
 
 @router.get("/api/fund/{reg_no}/chart")
 def api_fund_chart(reg_no: int, db: Session = Depends(get_db)):
