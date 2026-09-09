@@ -210,14 +210,16 @@ class FundRepository:
         )
 
     def get_fund_risk_metrics(self, reg_no: int):
-        """محاسبه معیارهای ریسک از تاریخچه NAV صندوق."""
+        """محاسبه معیارهای ریسک از آخرین 252 observation معتبر NAV صندوق."""
         histories = (
             self.db.query(FundHistory)
             .filter(FundHistory.fund_reg_no == reg_no)
-            .order_by(FundHistory.observed_at.asc())
+            .order_by(FundHistory.observed_at.desc())
             .limit(252)
             .all()
         )
+
+        histories.reverse()
 
         if len(histories) < 2:
             return {
@@ -374,8 +376,16 @@ class ETFRepository:
     def get_etf_by_ins_code(self, ins_code: str):
         return self.db.query(ETFMarket).filter(ETFMarket.ins_code == ins_code).first()
 
-    def get_etf_history(self, ins_code: str, limit: int = 60):
-        return self.db.query(ETFMarketHistory).filter(ETFMarketHistory.ins_code == ins_code).order_by(ETFMarketHistory.observed_at.asc()).limit(limit).all()
+    def get_etf_history(self, ins_code: str, limit: int = 90):
+        rows = (
+            self.db.query(ETFMarketHistory)
+            .filter(ETFMarketHistory.ins_code == ins_code)
+            .order_by(ETFMarketHistory.observed_at.desc())
+            .limit(limit)
+            .all()
+        )
+
+        return list(reversed(rows))
 
 
     def get_recent_premiums(

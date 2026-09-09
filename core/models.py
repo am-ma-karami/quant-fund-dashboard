@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, UniqueConstraint
+from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, UniqueConstraint, Boolean
 from sqlalchemy.orm import relationship
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -43,7 +43,7 @@ class Fund(Base):
     portfolio_other = Column(Float, nullable=True)
 
     ins_code = Column(String, nullable=True, index=True)
-    is_etf = Column(String, nullable=True, default="false")
+    is_etf = Column(Boolean, nullable=False, default=False)
 
     volatility = Column(Float, nullable=True)
     sharpe_ratio = Column(Float, nullable=True)

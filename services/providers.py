@@ -372,6 +372,40 @@ class TSETMCProvider:
         url = f"{self.base_url}/Fund/GetFundInDetail/{reg_no}"
 
         try:
+            response = requests.get(
+                url,
+                headers=self.headers,
+                timeout=self.timeout,
+            )
+            response.raise_for_status()
+            data = response.json()
+        except requests.RequestException:
+            logger.debug("Failed to fetch history for fund %s", reg_no)
+            return []
+
+        history = data.get("fund", {}).get("stats", [])
+
+        logger.info("Fund %s fetched %s history records", reg_no, len(history))
+
+        return history
+
+    def fetch_etf_history(
+        self,
+        ins_code: str,
+        limit: int = 0,
+    ) -> list:
+        """دریافت تاریخچه قیمت روزانه ETF از TSETMC.
+
+        limit=0 یعنی تمام رکوردهای موجود در provider.
+        پارامتر آخر در API TSETMC برابر `Top` است، نه تعداد روز تقویمی.
+        """
+        url = (
+            f"{self.base_url}/ClosingPrice/"
+            f"GetClosingPriceDailyList/"
+            f"{ins_code}/{limit}"
+        )
+
+        try:
             response = request_with_retry(
                 url,
                 headers=self.headers,
@@ -380,12 +414,19 @@ class TSETMCProvider:
             )
             data = response.json()
         except requests.RequestException:
-            logger.exception("Failed to fetch history for fund %s", reg_no)
+            logger.exception(
+                "Failed to fetch ETF history %s",
+                ins_code,
+            )
             return []
 
-        history = data.get("fund", {}).get("stats", [])
+        if not isinstance(data, dict):
+            return []
 
-        logger.info("Fund %s fetched %s history records", reg_no, len(history))
+        records = data.get("closingPriceDaily", [])
 
-        return history
+        if not isinstance(records, list):
+            return []
+
+        return records
 

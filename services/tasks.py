@@ -142,7 +142,7 @@ def update_etf_market_data():
                     norm_fund_name = normalize_fund_name(u_fund.name)
                     if norm_symbol and norm_symbol in norm_fund_name:
                         u_fund.ins_code = ins_code
-                        u_fund.is_etf = "true"
+                        u_fund.is_etf = True
                         break
 
             etf_repo.add_etf_history(ins_code, data, observed_at=iran_time())

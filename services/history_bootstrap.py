@@ -1,6 +1,6 @@
 import logging
 import time
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 from dateutil import parser
 
@@ -11,9 +11,10 @@ from services.providers import TSETMCProvider
 from sqlalchemy import func
 from core.database import SessionLocal
 from core.repositories import FundRepository
-from core.models import Fund, FundHistory
+from core.models import Fund, FundHistory, ETFMarketHistory
 from dateutil import parser
 import logging
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 
 
@@ -25,6 +26,22 @@ INITIAL_HISTORY_RECORDS = 3
 STALE_SOURCE_RETRY_HOURS = 6
 
 
+def parse_tsetmc_date(value) -> datetime | None:
+    """Parse TSETMC date format YYYYMMDD into datetime."""
+    if value is None:
+        return None
+
+    value = str(value)
+
+    if len(value) != 8 or not value.isdigit():
+        return None
+
+    try:
+        return datetime.strptime(value, "%Y%m%d")
+    except ValueError:
+        return None
+
+
 def _recent_history_records(history_data: list, days: int, limit: int) -> list:
     """Keep valid observations from the actual recent calendar window."""
     cutoff = iran_time() - timedelta(days=days)
@@ -33,9 +50,8 @@ def _recent_history_records(history_data: list, days: int, limit: int) -> list:
         record_date = item.get("recordDate")
         if not record_date:
             continue
-        try:
-            observed_at = parser.parse(record_date).replace(tzinfo=None)
-        except (TypeError, ValueError, OverflowError):
+        observed_at = parse_tsetmc_date(record_date)
+        if observed_at is None:
             logger.warning("Skipping an invalid history date: %r", record_date)
             continue
         if observed_at >= cutoff:
@@ -54,10 +70,11 @@ def _history_records_for_backfill(history_data: list, days: int, limit: int) -> 
         record_date = item.get("recordDate")
         if not record_date:
             continue
-        try:
-            all_records.append((parser.parse(record_date).replace(tzinfo=None), item))
-        except (TypeError, ValueError, OverflowError):
+        observed_at = parse_tsetmc_date(record_date)
+        if observed_at is None:
             logger.warning("Skipping an invalid history date: %r", record_date)
+            continue
+        all_records.append((observed_at, item))
     return sorted(all_records, key=lambda record: record[0])[-limit:], "latest_available"
 
 
@@ -123,73 +140,139 @@ def bootstrap_fund_history(reg_no: int, days: int = HISTORY_DAYS):
 
 def backfill_single_fund():
     """
-    پیدا کردن خودکار یک صندوق که تاریخچه ناقص دارد (کمتر از 90 روز)
-    و تکمیل دیتای آن از طریق API بورس.
+    پیدا کردن خودکار چند صندوق که تاریخچه ناقص دارد (کمتر از 90 روز)
+    و تکمیل دیتای آن‌ها از طریق API بورس.
     """
     db = SessionLocal()
     fund_repo = FundRepository(db)
     
-    # مقداردهی اولیه برای اینکه در بخش except خطای NameError نگیریم
-    reg_no = "نامشخص" 
-    
     try:
-        # ۱. کوئری هوشمند برای پیدا کردن صندوقی که تاریخچه ندارد یا ناقص است
-        # شمردن تعداد رکوردهای هیستوری برای هر صندوق
         subquery = db.query(
             FundHistory.fund_reg_no, 
             func.count(FundHistory.id).label('history_count')
         ).group_by(FundHistory.fund_reg_no).subquery()
         
-        # پیدا کردن صندوقی که یا هیستوری ندارد (None) یا تعدادش کمتر از 90 است
-        fund_to_backfill = db.query(Fund).outerjoin(
+        funds_to_backfill = db.query(Fund).outerjoin(
             subquery, Fund.reg_no == subquery.c.fund_reg_no
         ).filter(
             (subquery.c.history_count == None) | (subquery.c.history_count < 90)
-        ).first()
+        ).limit(10).all()
         
-        if not fund_to_backfill:
+        if not funds_to_backfill:
             logger.info("All funds have complete 90-day history. Nothing to backfill.")
             return
 
-        # ۲. استخراج reg_no و گرفتن دیتا از API
-        reg_no = fund_to_backfill.reg_no
-        logger.info(f"Backfilling history for Fund {reg_no}...")
-        
-        history_data = provider.fetch_fund_history_detail(reg_no)
-        
-        if not history_data:
-            logger.warning(f"No history data returned for Fund {reg_no}")
-            return
-
-        # ۳. ذخیره 90 روز آخر
-        sorted_history = sorted(
-            history_data,
-            key=lambda item: item.get("recordDate") or ""
-        )
-
-        for item in sorted_history[-90:]:
-            record_date = item.get("recordDate")
-            if not record_date: 
+        for fund_to_backfill in funds_to_backfill:
+            reg_no = fund_to_backfill.reg_no
+            logger.info(f"Backfilling history for Fund {reg_no}...")
+            
+            history_data = provider.fetch_fund_history_detail(reg_no)
+            
+            if not history_data:
+                logger.warning(f"No history data returned for Fund {reg_no}")
                 continue
-            
-            observed_at = parser.parse(record_date)
-            
-            fund_repo.upsert_fund_history(
-                reg_no=reg_no,
-                nav_stat=item.get("navStat"),
-                nav_sub=item.get("navSub"),
-                nav_red=item.get("navRed"),
-                net_asset=item.get("netAsset"),
-                units=item.get("units"),
-                observed_at=observed_at
+
+            parsed_history = []
+
+            for item in history_data:
+                observed_at = parse_tsetmc_date(
+                    item.get("recordDate")
+                )
+
+                if observed_at is None:
+                    continue
+
+                parsed_history.append(
+                    (observed_at, item)
+                )
+
+            parsed_history.sort(
+                key=lambda item: item[0],
+                reverse=True,
             )
-            
-        db.commit()
-        logger.info(f"Successfully backfilled history for Fund {reg_no}.")
+
+            for observed_at, item in parsed_history[:90]:
+                fund_repo.upsert_fund_history(
+                    reg_no=reg_no,
+                    nav_stat=item.get("navStat"),
+                    nav_sub=item.get("navSub"),
+                    nav_red=item.get("navRed"),
+                    net_asset=item.get("netAsset"),
+                    units=item.get("units"),
+                    observed_at=observed_at,
+                )
+
+            db.commit()
+            logger.info(f"Successfully backfilled history for Fund {reg_no}.")
+
+            fund_obj = fund_repo.get_fund_by_reg_no(reg_no)
+
+            if fund_obj and fund_obj.is_etf and fund_obj.ins_code:
+                logger.info(
+                    "Backfilling ETF market history for %s",
+                    fund_obj.ins_code,
+                )
+
+                etf_history = provider.fetch_etf_history(
+                    fund_obj.ins_code,
+                    limit=0,
+                )
+
+                cutoff = iran_time() - timedelta(days=90)
+
+                records = []
+
+                for item in etf_history:
+                    observed_at = parse_tsetmc_date(
+                        item.get("dEven")
+                    )
+
+                    if observed_at is None:
+                        continue
+
+                    if observed_at < cutoff:
+                        continue
+
+                    last_price = item.get("pDrCotVal")
+                    closing_price = item.get("pClosing")
+
+                    if last_price is None and closing_price is None:
+                        continue
+
+                    records.append({
+                        "ins_code": fund_obj.ins_code,
+                        "last_price": last_price,
+                        "closing_price": closing_price,
+                        "observed_at": observed_at,
+                    })
+
+                if records:
+                    stmt = pg_insert(
+                        ETFMarketHistory
+                    ).values(records)
+
+                    stmt = stmt.on_conflict_do_update(
+                        index_elements=[
+                            "ins_code",
+                            "observed_at",
+                        ],
+                        set_={
+                            "last_price": stmt.excluded.last_price,
+                            "closing_price": stmt.excluded.closing_price,
+                        },
+                    )
+
+                    db.execute(stmt)
+                    db.commit()
+
+                    logger.info(
+                        "Backfilled %s ETF price observations for %s",
+                        len(records),
+                        fund_obj.ins_code,
+                    )
         
     except Exception as e:
         db.rollback()
-        # حالا اینجا reg_no مقدار دارد و ارور نمی‌دهد
-        logger.error(f"Error backfilling fund {reg_no}: {e}")
+        logger.error(f"Error backfilling funds: {e}")
     finally:
         db.close()

@@ -123,6 +123,7 @@ def api_get_etfs(db: Session = Depends(get_db)):
 @router.get("/api/fund/{reg_no}/chart")
 def api_fund_chart(reg_no: int, db: Session = Depends(get_db)):
     repo = FundRepository(db)
+    etf_repo = ETFRepository(db)
     fund = repo.get_fund_by_reg_no(reg_no)
 
     if fund is None:
@@ -162,6 +163,24 @@ def api_fund_chart(reg_no: int, db: Session = Depends(get_db)):
             "net_asset": fund.net_asset or 0,
             "is_live": True,
         })
+
+    # Align ETF price history with NAV history by date
+    nav_by_date = {}
+    for h in recent_histories:
+        if h.observed_at and h.nav_stat is not None:
+            nav_by_date[h.observed_at.strftime("%Y-%m-%d")] = h.nav_stat
+
+    labels = sorted(nav_by_date.keys())
+    nav_data = [nav_by_date[date] for date in labels]
+    price_data = [None] * len(labels)
+
+    if fund.is_etf and fund.ins_code:
+        etf_histories = etf_repo.get_etf_history(fund.ins_code, limit=90)
+        price_by_date = {}
+        for h in etf_histories:
+            if h.observed_at and h.closing_price is not None:
+                price_by_date[h.observed_at.strftime("%Y-%m-%d")] = h.closing_price
+        price_data = [price_by_date.get(date) for date in labels]
 
     risk_metrics = repo.get_fund_risk_metrics(reg_no)
 
@@ -206,6 +225,10 @@ def api_fund_chart(reg_no: int, db: Session = Depends(get_db)):
             "active_return": active_return_value,
         },
         "history": chart_history,
+        "labels": labels,
+        "nav_data": nav_data,
+        "price_data": price_data,
+        "is_etf": bool(fund.is_etf),
         "window_start": cutoff.isoformat(),
         "has_changes_in_window": bool(recent_histories),
         "latest_history_at": latest_history_at.isoformat() if latest_history_at else None,
