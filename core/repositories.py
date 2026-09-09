@@ -337,6 +337,8 @@ class ETFRepository:
         etf.price_first = data.get('price_first')
         etf.price_yesterday = data.get('price_yesterday')
         etf.nav = data.get('nav')
+        etf.nav_red = data.get('nav_red')
+        etf.nav_sub = data.get('nav_sub')
         etf.premium_discount = data.get('premium_discount')
         etf.last_updated = iran_time()
         return etf
@@ -360,6 +362,8 @@ class ETFRepository:
             price_first=data.get('price_first'),
             price_yesterday=data.get('price_yesterday'),
             nav=data.get('nav'),
+            nav_red=data.get('nav_red'),
+            nav_sub=data.get('nav_sub'),
             premium_discount=data.get('premium_discount'),
             observed_at=observed_at or iran_time()
         )

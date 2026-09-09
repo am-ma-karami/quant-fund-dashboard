@@ -103,7 +103,8 @@ def api_get_etfs(db: Session = Depends(get_db)):
         "last_price": e.last_price, "closing_price": e.closing_price,
         "price_change": e.price_change, "total_trades": e.total_trades,
         "total_volume": e.total_volume, "total_value": e.total_value,
-        "nav": e.nav, "premium_discount": e.premium_discount,
+        "nav": e.nav, "nav_red": e.nav_red, "nav_sub": e.nav_sub,
+        "premium_discount": e.premium_discount,
         "last_updated": e.last_updated.strftime('%H:%M:%S') if e.last_updated else ""
     } for e in etfs]
 

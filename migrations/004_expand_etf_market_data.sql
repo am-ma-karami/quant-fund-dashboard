@@ -19,6 +19,8 @@ ALTER TABLE etf_market
     ADD COLUMN IF NOT EXISTS price_first FLOAT,
     ADD COLUMN IF NOT EXISTS price_yesterday FLOAT,
     ADD COLUMN IF NOT EXISTS nav FLOAT,
+    ADD COLUMN IF NOT EXISTS nav_red FLOAT,
+    ADD COLUMN IF NOT EXISTS nav_sub FLOAT,
     ADD COLUMN IF NOT EXISTS premium_discount FLOAT,
     ADD COLUMN IF NOT EXISTS volatility FLOAT,
     ADD COLUMN IF NOT EXISTS sharpe_ratio FLOAT,
@@ -34,6 +36,8 @@ ALTER TABLE etf_market_histories
     ADD COLUMN IF NOT EXISTS price_first FLOAT,
     ADD COLUMN IF NOT EXISTS price_yesterday FLOAT,
     ADD COLUMN IF NOT EXISTS nav FLOAT,
+    ADD COLUMN IF NOT EXISTS nav_red FLOAT,
+    ADD COLUMN IF NOT EXISTS nav_sub FLOAT,
     ADD COLUMN IF NOT EXISTS premium_discount FLOAT;
 
 CREATE UNIQUE INDEX IF NOT EXISTS uix_etf_observation

@@ -110,6 +110,8 @@ class ETFMarket(Base):
     price_yesterday = Column(Float, nullable=True)
 
     nav = Column(Float, nullable=True)
+    nav_red = Column(Float, nullable=True)
+    nav_sub = Column(Float, nullable=True)
     premium_discount = Column(Float, nullable=True)
 
     volatility = Column(Float, nullable=True)
@@ -150,6 +152,8 @@ class ETFMarketHistory(Base):
     price_yesterday = Column(Float, nullable=True)
 
     nav = Column(Float, nullable=True)
+    nav_red = Column(Float, nullable=True)
+    nav_sub = Column(Float, nullable=True)
     premium_discount = Column(Float, nullable=True)
 
     observed_at = Column(DateTime, nullable=False, index=True)

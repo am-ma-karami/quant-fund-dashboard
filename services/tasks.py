@@ -96,7 +96,22 @@ def update_etf_market_data():
                 'price_first': item.get("priceFirst"),
                 'price_yesterday': item.get("priceYesterday"),
                 'nav': item.get("nav"),
+                'nav_red': item.get("pRedTran"),
+                'nav_sub': item.get("pSubTran"),
             }
+
+            # NAV را از داده‌ی بازار می‌گیریم؛ اگر موجود نبود از Instrument Info استفاده می‌کنیم
+            if not data.get('nav'):
+                instrument_info = market_provider.fetch_etf_instrument_info(ins_code)
+                if instrument_info and instrument_info.get('nav'):
+                    data['nav'] = instrument_info['nav']
+
+            # قیمت‌های redemption/subscription را جداگانه از API اختصاصی می‌گیریم
+            if not data.get('nav_red') or not data.get('nav_sub'):
+                etf_nav = market_provider.fetch_etf_nav(ins_code)
+                if etf_nav:
+                    data['nav_red'] = etf_nav.get('pRedTran')
+                    data['nav_sub'] = etf_nav.get('pSubTran')
 
             nav = data.get('nav')
             data['premium_discount'] = calculate_premium_discount(

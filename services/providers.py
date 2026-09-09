@@ -190,6 +190,43 @@ class TSETMCProvider:
 
         return data.get("etf")
 
+    def fetch_etf_instrument_info(self, ins_code: str) -> dict | None:
+        """دریافت اطلاعات ابزار شامل NAV از API Instrument Info."""
+        url = (
+            f"{self.base_url}/Instrument/"
+            f"GetInstrumentInfo/{ins_code}"
+        )
+
+        try:
+            response = request_with_retry(
+                url,
+                headers=self.headers,
+                timeout=self.timeout,
+                retries=self.max_retries,
+            )
+            data = response.json()
+        except requests.RequestException:
+            logger.exception(
+                "Failed to fetch ETF instrument info for %s",
+                ins_code,
+            )
+            return None
+
+        if not isinstance(data, dict):
+            return None
+
+        instrument_info = data.get("instrumentInfo")
+        if not isinstance(instrument_info, dict):
+            return None
+
+        return {
+            "nav": instrument_info.get("nav"),
+            "symbol_en": instrument_info.get("lVal18"),
+            "name_en": instrument_info.get("lVal30"),
+            "symbol": instrument_info.get("lVal18AFC"),
+            "ins_code": instrument_info.get("insCode"),
+        }
+
     def fetch_etf_history(
         self,
         ins_code: str,
