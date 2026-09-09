@@ -70,6 +70,14 @@ class FundHistory(Base):
     )
 
 
+class HistoryBackfillState(Base):
+    """Records temporary source-data gaps so one stale fund cannot block the queue."""
+    __tablename__ = "history_backfill_state"
+
+    fund_reg_no = Column(Integer, ForeignKey("funds.reg_no"), primary_key=True)
+    checked_at = Column(DateTime, nullable=False, default=iran_time, index=True)
+
+
 class ETFMarket(Base):
     __tablename__ = "etf_market"
     ins_code = Column(String, primary_key=True, index=True)

@@ -162,7 +162,7 @@ class TSETMCProvider:
         return results
 
     def fetch_fund_history_detail(self, reg_no: int) -> list:
-        """گرفتن تاریخچه 90 روزه یک صندوق (Bootstrap)"""
+        """گرفتن تاریخچه صندوق برای bootstrap/backfill."""
         url = f"{self.base_url}/Fund/GetFundInDetail/{reg_no}"
 
         try:

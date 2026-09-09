@@ -21,7 +21,9 @@
                 </thead>
                 <tbody id="etf-tbody">
                     {% for etf in etfs %}
-                        <tr style="cursor: pointer;" onclick="window.location.href='/etf/{{ etf.ins_code }}'">                        <td class="small">{{ etf.name }}</td>
+                        <tr style="cursor: pointer;" onclick="window.location.href='/etf/{{ etf.ins_code }}'">
+                        <td class="fw-bold text-primary">{{ etf.symbol }}</td>
+                        <td class="small">{{ etf.name }}</td>
                         <td class="fw-bold">{{ "{:,.0f}".format(etf.last_price) if etf.last_price else "-" }}</td>
                         <td>{{ "{:,.0f}".format(etf.closing_price) if etf.closing_price else "-" }}</td>
                         <td dir="ltr" class="{% if etf.price_change and etf.price_change > 0 %}text-success{% elif etf.price_change and etf.price_change < 0 %}text-danger{% endif %}">
@@ -38,32 +40,44 @@
 </div>
 
 <script>
+    function formatNumber(value) {
+        return Number(value || 0).toLocaleString();
+    }
+
+    function renderEtfs(data) {
+        const tbody = document.getElementById('etf-tbody');
+        const fragment = document.createDocumentFragment();
+        data.forEach(etf => {
+            const tr = document.createElement('tr');
+            tr.style.cursor = 'pointer';
+            tr.onclick = () => window.location.href = `/etf/${etf.ins_code}`;
+            const changeClass = etf.price_change > 0 ? 'text-success' : (etf.price_change < 0 ? 'text-danger' : '');
+            const cells = [
+                [etf.symbol, 'fw-bold text-primary'],
+                [etf.name, 'small'],
+                [formatNumber(etf.last_price), 'fw-bold'],
+                [formatNumber(etf.closing_price), ''],
+                [formatNumber(etf.price_change), changeClass],
+                [formatNumber(etf.total_trades), ''],
+                [etf.last_updated, 'small text-muted'],
+            ];
+            cells.forEach(([value, className], index) => {
+                const td = document.createElement('td');
+                td.className = className;
+                if (index === 4) td.dir = 'ltr';
+                td.textContent = value;
+                tr.appendChild(td);
+            });
+            fragment.appendChild(tr);
+        });
+        tbody.replaceChildren(fragment);
+    }
+
     // سیستم آپدیت خودکار (AJAX Polling) هر 60 ثانیه
     setInterval(() => {
         fetch('/api/etfs')
             .then(response => response.json())
-            .then(data => {
-                const tbody = document.getElementById('etf-tbody');
-                tbody.innerHTML = ''; // پاک کردن ردیف‌های قدیمی
-                data.forEach(etf => {
-                    const tr = document.createElement('tr');
-                    tr.style.cursor = 'pointer';
-                    tr.onclick = () => window.location.href = `/etf-to-fund/${etf.ins_code}`;
-                    
-                    let changeClass = etf.price_change > 0 ? 'text-success' : (etf.price_change < 0 ? 'text-danger' : '');
-                    
-                    tr.innerHTML = `
-                        <td class="fw-bold text-primary">${etf.symbol}</td>
-                        <td class="small">${etf.name}</td>
-                        <td class="fw-bold">${(etf.last_price || 0).toLocaleString()}</td>
-                        <td>${(etf.closing_price || 0).toLocaleString()}</td>
-                        <td dir="ltr" class="${changeClass}">${(etf.price_change || 0).toLocaleString()}</td>
-                        <td>${(etf.total_trades || 0).toLocaleString()}</td>
-                        <td class="small text-muted">${etf.last_updated}</td>
-                    `;
-                    tbody.appendChild(tr);
-                });
-            })
+            .then(renderEtfs)
             .catch(err => console.error("Error fetching live data: ", err));
     }, 60000);
 </script>

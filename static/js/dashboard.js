@@ -13,9 +13,7 @@ async function fetchJSON(url) {
 
 async function loadTopFunds() {
     const container = document.getElementById("top-funds");
-    const canvas = document.getElementById("bigPictureChart");
-
-    if (!container || !canvas) {
+    if (!container) {
         return;
     }
 
@@ -31,47 +29,58 @@ async function loadTopFunds() {
             return;
         }
 
-        container.style.display = "none";
-        canvas.style.display = "block";
+        const maximum = Math.max(...data.map(item => Math.abs(Number(item.return_30d || 0))), 1);
+        const list = document.createElement("div");
+        list.className = "row row-cols-1 row-cols-md-2 g-3";
 
-        const labels = data.map(item => item.name);
-        const values = data.map(item => Number(item.return_30d || 0));
-
-        if (window.topFundsChart) {
-            window.topFundsChart.destroy();
-        }
-
-        window.topFundsChart = new Chart(canvas, {
-            type: "bar",
-            data: {
-                labels,
-                datasets: [{
-                    label: "بازدهی ۳۰ روزه (%)",
-                    data: values,
-                    backgroundColor: "rgba(54, 162, 235, 0.7)",
-                    borderColor: "rgba(54, 162, 235, 1)",
-                    borderWidth: 1,
-                    borderRadius: 4
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                    legend: { display: false }
-                },
-                scales: {
-                    y: { beginAtZero: false }
-                }
-            }
+        data.forEach(item => {
+            const value = Number(item.return_30d || 0);
+            const positive = value >= 0;
+            const column = document.createElement("div");
+            column.className = "col";
+            const link = document.createElement("a");
+            link.href = `/fund/${item.reg_no}`;
+            link.className = "card h-100 border-0 bg-light text-decoration-none shadow-sm";
+            const body = document.createElement("div");
+            body.className = "card-body py-3";
+            const header = document.createElement("div");
+            header.className = "d-flex align-items-center gap-2 mb-2";
+            const rank = document.createElement("span");
+            rank.className = "badge rounded-pill bg-primary";
+            rank.textContent = item.rank;
+            const name = document.createElement("span");
+            name.className = "text-dark fw-semibold text-truncate";
+            name.textContent = item.name;
+            header.append(rank, name);
+            const metrics = document.createElement("div");
+            metrics.className = "d-flex justify-content-between align-items-center small";
+            const label = document.createElement("span");
+            label.className = "text-muted";
+            label.textContent = "بازدهی ۳۰ روزه";
+            const returnValue = document.createElement("span");
+            returnValue.dir = "ltr";
+            returnValue.className = `fw-bold ${positive ? "text-success" : "text-danger"}`;
+            returnValue.textContent = `${positive ? "+" : ""}${value.toLocaleString("fa-IR", { maximumFractionDigits: 2 })}%`;
+            metrics.append(label, returnValue);
+            const progress = document.createElement("div");
+            progress.className = "progress mt-2";
+            progress.style.height = "5px";
+            const bar = document.createElement("div");
+            bar.className = `progress-bar ${positive ? "bg-success" : "bg-danger"}`;
+            bar.style.width = `${Math.min(100, (Math.abs(value) / maximum) * 100)}%`;
+            progress.appendChild(bar);
+            body.append(header, metrics, progress);
+            link.appendChild(body);
+            column.appendChild(link);
+            list.appendChild(column);
         });
+        container.replaceChildren(list);
 
     } catch (error) {
         console.error("Top funds loading failed:", error);
         container.style.display = "block";
         container.innerHTML =
             `<div class="error-state text-center p-3 text-danger">دریافت اطلاعات Top 10 ناموفق بود.</div>`;
-        canvas.style.display = "none";
     }
 }
 

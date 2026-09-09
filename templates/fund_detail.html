@@ -82,13 +82,14 @@
         <!-- کارت Chart -->
         <div class="card shadow-sm border-0 mb-4">
             <div class="card-header bg-light d-flex justify-content-between">
-                <strong>نمودار تغییرات NAV (۹۰ روز اخیر)</strong>
+                <strong>نمودار مالی تعاملی NAV (۳۰ روز اخیر)</strong>
                 <span class="text-muted small" id="last_updated">--:--:--</span>
             </div>
             <div class="card-body">
                 <div id="chart-loading" class="loading" style="display: none;">در حال دریافت اطلاعات...</div>
                 <div id="chart-error" class="error-state text-danger" style="display: none;"></div>
-                <canvas id="fundChart" height="110" style="display: none;"></canvas>
+                <div id="chart-status" class="small mb-2" style="display: none;"></div>
+                <div id="fundChart" style="height: 420px; display: none;"></div>
             </div>
         </div>
 

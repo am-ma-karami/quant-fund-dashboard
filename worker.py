@@ -41,7 +41,7 @@ def run_etf_sync():
 def run_history_backfill():
     try:
         logger.info("Starting history backfill (single fund)...")
-        backfill_single_fund(min_history_days=5)
+        backfill_single_fund()
         logger.info("History backfill completed.")
     except Exception:
         logger.exception("History backfill failed.")

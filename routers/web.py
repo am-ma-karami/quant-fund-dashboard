@@ -1,12 +1,12 @@
 from fastapi import APIRouter, Request, Depends, HTTPException
-from fastapi.responses import RedirectResponse
 from fastapi.templating import Jinja2Templates
 from fastapi_cache.decorator import cache
 from sqlalchemy.orm import Session
 from sqlalchemy import text
+from datetime import timedelta
 
 from core.database import get_db
-from core.repositories import FundRepository, ETFRepository
+from core.repositories import FundRepository, ETFRepository, iran_time
 
 router = APIRouter()
 templates = Jinja2Templates(directory="templates")
@@ -59,7 +59,10 @@ def read_fund_detail(request: Request, reg_no: int, db: Session = Depends(get_db
     if not fund:
         raise HTTPException(status_code=404, detail="صندوق در حال بروزرسانی است یا وجود ندارد.")
         
-    histories = repo.get_fund_history(reg_no)
+    cutoff = iran_time() - timedelta(days=30)
+    recent_histories = repo.get_fund_history(reg_no, since=cutoff)
+    histories = recent_histories or repo.get_fund_history(reg_no, limit=30)
+    latest_history_at = repo.get_latest_observation_time(reg_no)
     labels = [h.observed_at.strftime('%Y-%m-%d') for h in histories]
     data = [h.nav_stat for h in histories]
     
@@ -112,7 +115,38 @@ def api_fund_chart(reg_no: int, db: Session = Depends(get_db)):
             detail=f"Fund {reg_no} not found"
         )
     
-    histories = repo.get_fund_history(reg_no)
+    cutoff = iran_time() - timedelta(days=30)
+    recent_histories = repo.get_fund_history(reg_no, limit=90, since=cutoff)
+    anchor = repo.get_latest_history_before(reg_no, cutoff)
+    latest_history_at = repo.get_latest_observation_time(reg_no)
+    chart_history = []
+
+    # The upstream feed is change-based, not daily. Carry the last known NAV
+    # into the window so a quiet month renders as a valid flat step series.
+    if anchor:
+        chart_history.append({
+            "timestamp": cutoff.isoformat(),
+            "nav_stat": anchor.nav_stat or 0,
+            "net_asset": anchor.net_asset or 0,
+            "is_anchor": True,
+        })
+
+    chart_history.extend({
+        "timestamp": h.observed_at.isoformat(),
+        "nav_stat": h.nav_stat or 0,
+        "net_asset": h.net_asset or 0,
+        "is_anchor": False,
+    } for h in recent_histories)
+
+    live_timestamp = fund.last_updated or iran_time()
+    if not chart_history or chart_history[-1]["timestamp"] != live_timestamp.isoformat():
+        chart_history.append({
+            "timestamp": live_timestamp.isoformat(),
+            "nav_stat": fund.nav_stat or 0,
+            "net_asset": fund.net_asset or 0,
+            "is_live": True,
+        })
+
     return {
         "fund": {
             "reg_no": fund.reg_no,
@@ -126,14 +160,10 @@ def api_fund_chart(reg_no: int, db: Session = Depends(get_db)):
                 else None
             )
         },
-        "history": [
-            {
-                "timestamp": h.observed_at.isoformat(),
-                "nav_stat": h.nav_stat or 0,
-                "net_asset": h.net_asset or 0
-            }
-            for h in histories
-        ]
+        "history": chart_history,
+        "window_start": cutoff.isoformat(),
+        "has_changes_in_window": bool(recent_histories),
+        "latest_history_at": latest_history_at.isoformat() if latest_history_at else None,
     }
 
 @router.get("/api/etf/{ins_code}/chart")
@@ -155,31 +185,6 @@ def api_etf_chart(ins_code: str, db: Session = Depends(get_db)):
         "last_price": etf.last_price, "closing_price": etf.closing_price,
         "last_updated": etf.last_updated.strftime('%Y-%m-%d %H:%M:%S')
     }
-
-
-# @router.get("/etf-to-fund/{ins_code}")
-# def redirect_etf_to_fund(ins_code: str, db: Session = Depends(get_db)):
-#     """
-#     موتور جستجوی هوشمند برای مپ کردن دیتای تابلوی معاملات به دیتای پورتفوی صندوق.
-#     چون API بورس کلید مشترکی نمی‌دهد، ما بر اساس «نماد» در «نام صندوق» سرچ می‌کنیم.
-#     """
-#     repo = ETFRepository(db)
-#     etf = repo.get_etf_by_ins_code(ins_code)
-    
-#     # اگر اصلا چنین کدی در تابلوی لایو ما نبود، برگرد به صفحه تابلو
-#     if not etf:
-#         return RedirectResponse(url="/etf-live")
-        
-#     # جستجو در جدول صندوق‌ها با استفاده از LIKE (یا ilike برای حساس نبودن به حروف)
-#     # در SQLAlchemy معادل LIKE %symbol% همان متد contains است:
-#     matched_fund = db.query(Fund).filter(Fund.name.contains(etf.symbol)).first()
-    
-#     if matched_fund:
-#         # اگر صندوق پیدا شد، کاربر را به صورت خودکار به صفحه داشبورد صندوق شوت کن
-#         return RedirectResponse(url=f"/fund/{matched_fund.reg_no}")
-#     else:
-#         # اگر پیدا نشد (مثلا اسمش خیلی فرق داشت)، کاربر را بفرست به صفحه چارت ساده خود ETF
-#         return RedirectResponse(url=f"/etf/{ins_code}")
 
 
 @router.get("/api/market-pulse")

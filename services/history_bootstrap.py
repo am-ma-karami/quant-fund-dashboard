@@ -1,19 +1,58 @@
 import logging
-import time
+from datetime import timedelta
 
 from dateutil import parser
 
 from core.database import SessionLocal
-from core.repositories import FundRepository
+from core.repositories import FundRepository, iran_time
 from services.providers import TSETMCProvider
 
 
 logger = logging.getLogger(__name__)
 
 provider = TSETMCProvider()
+HISTORY_DAYS = 30
+INITIAL_HISTORY_RECORDS = 3
+STALE_SOURCE_RETRY_HOURS = 6
 
 
-def bootstrap_fund_history(reg_no: int, days: int = 90):
+def _recent_history_records(history_data: list, days: int, limit: int) -> list:
+    """Keep valid observations from the actual recent calendar window."""
+    cutoff = iran_time() - timedelta(days=days)
+    records = []
+    for item in history_data:
+        record_date = item.get("recordDate")
+        if not record_date:
+            continue
+        try:
+            observed_at = parser.parse(record_date).replace(tzinfo=None)
+        except (TypeError, ValueError, OverflowError):
+            logger.warning("Skipping an invalid history date: %r", record_date)
+            continue
+        if observed_at >= cutoff:
+            records.append((observed_at, item))
+    return sorted(records, key=lambda record: record[0])[-limit:]
+
+
+def _history_records_for_backfill(history_data: list, days: int, limit: int) -> tuple[list, str]:
+    """Prefer the current window, falling back to the latest source observations."""
+    recent = _recent_history_records(history_data, days, limit)
+    if len(recent) >= limit:
+        return recent, "recent"
+
+    all_records = []
+    for item in history_data:
+        record_date = item.get("recordDate")
+        if not record_date:
+            continue
+        try:
+            all_records.append((parser.parse(record_date).replace(tzinfo=None), item))
+        except (TypeError, ValueError, OverflowError):
+            logger.warning("Skipping an invalid history date: %r", record_date)
+    return sorted(all_records, key=lambda record: record[0])[-limit:], "latest_available"
+
+
+def bootstrap_fund_history(reg_no: int, days: int = HISTORY_DAYS):
     db = SessionLocal()
     repo = FundRepository(db)
 
@@ -41,14 +80,8 @@ def bootstrap_fund_history(reg_no: int, days: int = 90):
             )
             return
 
-        for item in history_data:
-
-            record_date = item.get("recordDate")
-
-            if not record_date:
-                continue
-
-            observed_at = parser.parse(record_date)
+        records, _ = _history_records_for_backfill(history_data, days, days)
+        for observed_at, item in records:
 
             repo.upsert_fund_history(
                 reg_no=reg_no,
@@ -75,46 +108,56 @@ def bootstrap_fund_history(reg_no: int, days: int = 90):
         db.close()
 
 
-def backfill_single_fund(min_history_days: int = 30):
+def backfill_single_fund(
+    history_days: int = HISTORY_DAYS,
+    initial_records: int = INITIAL_HISTORY_RECORDS,
+):
     """
-    Backfill history for ONE fund that has less than min_history_days of data.
-    Returns True if a fund was processed, False if no funds need backfill.
+    Backfill one fund per run. Every fund first receives a few recent records;
+    only then are all funds completed up to the configured history window.
     """
     db = SessionLocal()
     repo = FundRepository(db)
 
     try:
-        funds = repo.get_funds_with_insufficient_history(
-            min_days=min_history_days,
-            limit=1
+        cutoff = iran_time() - timedelta(days=history_days)
+        fund, phase = repo.get_next_history_backfill_fund(
+            initial_records=initial_records,
+            target_records=history_days,
         )
-
-        if not funds:
-            logger.info("No funds require history backfill (all have >= %s days)", min_history_days)
+        completed, total = repo.get_history_backfill_progress(history_days, since=cutoff)
+        covered, _ = repo.get_history_backfill_progress(1, since=cutoff)
+        if not fund:
+            logger.info(
+                "History backfill complete: %s/%s funds have %s recent records",
+                completed, total, history_days,
+            )
             return False
 
-        fund = funds[0]
+        record_limit = initial_records if phase == "initial" else history_days
         logger.info(
-            "Backfilling history for Fund %s (currently %s records)",
-            fund.reg_no,
-            repo.get_history_count(fund.reg_no)
+            "History backfill [%s]: fund %s (historical coverage %s/%s; 30-day completion %s/%s; %s records now)",
+            phase, fund.reg_no, covered, total, completed, total, repo.get_history_count(fund.reg_no, since=cutoff),
         )
 
         history_data = provider.fetch_fund_history_detail(
             fund.reg_no
         )
 
-        if not history_data:
-            logger.warning("No history data returned for Fund %s", fund.reg_no)
+        history_records, source_mode = _history_records_for_backfill(
+            history_data, history_days, record_limit
+        )
+        if not history_records:
+            repo.mark_history_source_stale(fund.reg_no)
+            db.commit()
+            logger.warning(
+                "Fund %s has no history in the last %s days; retry deferred for %s hours",
+                fund.reg_no, history_days, STALE_SOURCE_RETRY_HOURS,
+            )
             return True
 
         count = 0
-        for item in history_data:
-            record_date = item.get("recordDate")
-            if not record_date:
-                continue
-
-            observed_at = parser.parse(record_date)
+        for observed_at, item in history_records:
 
             # Only insert if we don't already have this date
             existing = repo.get_history_by_date(fund.reg_no, observed_at)
@@ -129,11 +172,19 @@ def backfill_single_fund(min_history_days: int = 30):
 
         db.commit()
 
+        if count == 0 and repo.get_history_count(fund.reg_no, since=cutoff) < record_limit:
+            repo.mark_history_source_stale(fund.reg_no)
+            db.commit()
+            logger.warning(
+                "Fund %s did not provide additional recent observations; retry deferred for %s hours",
+                fund.reg_no, STALE_SOURCE_RETRY_HOURS,
+            )
+
+        completed, total = repo.get_history_backfill_progress(history_days, since=cutoff)
+        covered, _ = repo.get_history_backfill_progress(1, since=cutoff)
         logger.info(
-            "Added %s new history records for Fund %s (total now: %s)",
-            count,
-            fund.reg_no,
-            repo.get_history_count(fund.reg_no)
+            "History backfill [%s/%s] finished for fund %s: +%s records; recent coverage %s/%s; 30-day completion %s/%s",
+            phase, source_mode, fund.reg_no, count, covered, total, completed, total,
         )
         return True
 

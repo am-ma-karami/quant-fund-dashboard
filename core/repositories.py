@@ -1,5 +1,5 @@
 from sqlalchemy.orm import Session
-from core.models import Fund, FundHistory, ETFMarket, ETFMarketHistory
+from core.models import Fund, FundHistory, HistoryBackfillState, ETFMarket, ETFMarketHistory
 from datetime import datetime
 
 from zoneinfo import ZoneInfo
@@ -23,12 +23,12 @@ class FundRepository:
             Fund.day30_return != None
         ).order_by(Fund.day30_return.desc()).limit(limit).all()
 
-    def get_fund_history(self, reg_no: int, limit: int = 90):
+    def get_fund_history(self, reg_no: int, limit: int = 30, since: datetime | None = None):
+        query = self.db.query(FundHistory).filter(FundHistory.fund_reg_no == reg_no)
+        if since is not None:
+            query = query.filter(FundHistory.observed_at >= since)
         rows = (
-            self.db.query(FundHistory)
-            .filter(
-                FundHistory.fund_reg_no == reg_no
-            )
+            query
             .order_by(
                 FundHistory.observed_at.desc()
             )
@@ -86,6 +86,18 @@ class FundRepository:
                         .order_by(FundHistory.observed_at.desc()).first()
         return latest.observed_at if latest else None
 
+    def get_latest_history_before(self, reg_no: int, before: datetime):
+        """Get the last NAV known before a chart window begins."""
+        return (
+            self.db.query(FundHistory)
+            .filter(
+                FundHistory.fund_reg_no == reg_no,
+                FundHistory.observed_at < before,
+            )
+            .order_by(FundHistory.observed_at.desc())
+            .first()
+        )
+
     def has_history(self, reg_no: int) -> bool:
         return (
             self.db.query(FundHistory.id)
@@ -94,12 +106,77 @@ class FundRepository:
             is not None
         )
 
-    def get_history_count(self, reg_no: int) -> int:
-        return (
-            self.db.query(FundHistory)
-            .filter(FundHistory.fund_reg_no == reg_no)
+    def get_history_count(self, reg_no: int, since: datetime | None = None) -> int:
+        query = self.db.query(FundHistory).filter(FundHistory.fund_reg_no == reg_no)
+        if since is not None:
+            query = query.filter(FundHistory.observed_at >= since)
+        return query.count()
+
+    def get_history_backfill_progress(
+        self, target_records: int, since: datetime | None = None
+    ) -> tuple[int, int]:
+        """Return the number of eligible funds that reached the target and their total."""
+        from sqlalchemy import func
+
+        history_query = self.db.query(
+                FundHistory.fund_reg_no,
+                func.count(FundHistory.id).label("hist_count"),
+            )
+        if since is not None:
+            history_query = history_query.filter(FundHistory.observed_at >= since)
+        counts = history_query.group_by(FundHistory.fund_reg_no).subquery()
+        eligible = self.db.query(Fund).filter(Fund.net_asset > 0)
+        total = eligible.count()
+        complete = (
+            eligible.outerjoin(counts, Fund.reg_no == counts.c.fund_reg_no)
+            .filter(func.coalesce(counts.c.hist_count, 0) >= target_records)
             .count()
         )
+        return complete, total
+
+    def get_next_history_backfill_fund(
+        self,
+        initial_records: int,
+        target_records: int,
+        since: datetime | None = None,
+        skip_checked_since: datetime | None = None,
+    ) -> tuple[Fund | None, str | None]:
+        """Prioritize initial coverage for every fund before completing full history."""
+        from sqlalchemy import func
+
+        history_query = self.db.query(
+                FundHistory.fund_reg_no,
+                func.count(FundHistory.id).label("hist_count"),
+            )
+        if since is not None:
+            history_query = history_query.filter(FundHistory.observed_at >= since)
+        counts = history_query.group_by(FundHistory.fund_reg_no).subquery()
+        base_query = self.db.query(Fund).outerjoin(
+            counts, Fund.reg_no == counts.c.fund_reg_no
+        ).outerjoin(
+            HistoryBackfillState, Fund.reg_no == HistoryBackfillState.fund_reg_no
+        ).filter(Fund.net_asset > 0)
+        if skip_checked_since is not None:
+            base_query = base_query.filter(
+                (HistoryBackfillState.checked_at.is_(None))
+                | (HistoryBackfillState.checked_at < skip_checked_since)
+            )
+        history_count = func.coalesce(counts.c.hist_count, 0)
+        order_by = (history_count.asc(), Fund.net_asset.desc())
+
+        fund = base_query.filter(history_count < initial_records).order_by(*order_by).first()
+        if fund:
+            return fund, "initial"
+
+        fund = base_query.filter(history_count < target_records).order_by(*order_by).first()
+        return (fund, "full") if fund else (None, None)
+
+    def mark_history_source_stale(self, reg_no: int) -> None:
+        state = self.db.get(HistoryBackfillState, reg_no)
+        if state is None:
+            self.db.add(HistoryBackfillState(fund_reg_no=reg_no, checked_at=iran_time()))
+        else:
+            state.checked_at = iran_time()
 
     def get_history_by_date(self, reg_no: int, observed_at: datetime):
         return (
@@ -117,10 +194,11 @@ class FundRepository:
         from sqlalchemy import func
         cutoff_date = datetime.utcnow() - timedelta(days=min_days)
         
-        # Subquery: latest history date per fund
+        # Subquery: history count and latest date per fund
         subq = (
             self.db.query(
                 FundHistory.fund_reg_no,
+                func.count(FundHistory.id).label('hist_count'),
                 func.max(FundHistory.observed_at).label('latest_date')
             )
             .group_by(FundHistory.fund_reg_no)
@@ -128,6 +206,7 @@ class FundRepository:
         )
         
         # Funds with no history OR latest record older than min_days
+        # Prioritize: no history first, then few records, then by net_asset
         return (
             self.db.query(Fund)
             .outerjoin(subq, Fund.reg_no == subq.c.fund_reg_no)
@@ -135,7 +214,10 @@ class FundRepository:
                 Fund.net_asset > 0,
                 (subq.c.latest_date < cutoff_date) | (subq.c.latest_date.is_(None))
             )
-            .order_by(Fund.net_asset.desc())
+            .order_by(
+                subq.c.hist_count.asc().nullsfirst(),  # No history first
+                Fund.net_asset.desc()  # Then by size
+            )
             .limit(limit)
             .all()
         )
@@ -160,6 +242,9 @@ class FundRepository:
                 observed_at=observed_at
             )
             self.db.add(history)
+
+        # Flush immediately to avoid bulk insert conflicts
+        self.db.flush()
 
 
 class ETFRepository:
