@@ -416,6 +416,28 @@ def api_data_quality(
     }
 
 
+@router.get("/api/dashboard/history-backfill")
+def api_history_backfill_progress(db: Session = Depends(get_db)):
+    from datetime import timedelta
+    from core.repositories import FundRepository, iran_time
+
+    repo = FundRepository(db)
+    cutoff = iran_time() - timedelta(days=30)
+    complete, total = repo.get_history_backfill_progress(
+        target_records=30,
+        since=cutoff,
+    )
+    missing = total - complete
+    pct = (complete / total * 100) if total else 0
+
+    return {
+        "total": total,
+        "complete": complete,
+        "missing": missing,
+        "percentage": round(pct, 1),
+    }
+
+
 @router.get("/ready")
 def readiness(
     db: Session = Depends(get_db)
