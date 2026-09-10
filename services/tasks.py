@@ -175,11 +175,13 @@ async def update_etf_market_data():
             etf = etf_repo.get_etf_by_ins_code(ins_code)
 
             if identity and etf:
-                etf.symbol = identity.get("symbol") or identity.get("lVal18AFC")
-                etf.sector = identity.get("sector") or identity.get("sectorName")
-                etf.subsector = identity.get("subSector") or identity.get("subSectorName")
-                etf.market = identity.get("market")
-                etf.instrument_status = identity.get("status")
+                # هویت ابزار در provider به قرارداد مسطح رشتهای نرمال
+                # شده است؛ «or etf.x» یعنی مقدار نامعتبر، مقدار موجود
+                # روی تابلوی بازار را نمیپوشاند
+                etf.symbol = identity.get("symbol") or etf.symbol
+                etf.sector = identity.get("sector") or etf.sector
+                etf.subsector = identity.get("subsector") or etf.subsector
+                etf.market = identity.get("market") or etf.market
 
             fund = db.query(Fund).filter(Fund.ins_code == ins_code).first()
             if not fund:

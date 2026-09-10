@@ -361,7 +361,30 @@ class TSETMCProvider:
         if not isinstance(data, dict):
             return None
 
-        return data.get("instrumentIdentity")
+        identity = data.get("instrumentIdentity")
+        if not isinstance(identity, dict):
+            return None
+
+        # قرارداد واقعی TSETMC: sector و subSector شیءهای تودرتو هستند
+        # ({"lSecVal": "..."}، {"lSoSecVal": "..."})، نه رشته. اینجا به
+        # قرارداد مسطح رشتهای نرمال میشوند تا مصرفکننده هرگز شیء به
+        # ستون String ندهد — باگ «can't adapt type 'dict'» که چرخه زنده
+        # را میکشت دقیقاً از همین نشت بود (سند ۶، فاز ۱۲).
+        def _label(value, *keys):
+            if isinstance(value, dict):
+                for key in keys:
+                    if value.get(key):
+                        return value[key]
+                return None
+            return value
+
+        return {
+            "symbol": _label(identity.get("lVal18AFC")),
+            "name": _label(identity.get("lVal30")),
+            "sector": _label(identity.get("sector"), "lSecVal"),
+            "subsector": _label(identity.get("subSector"), "lSoSecVal"),
+            "market": _label(identity.get("cgrValCotTitle")),
+        }
 
     def fetch_instrument_state(
         self,
