@@ -2,6 +2,7 @@ import logging
 import time
 from datetime import datetime
 
+import httpx
 import requests
 from dateutil import parser
 from threading import Lock
@@ -196,11 +197,19 @@ class TSETMCProvider:
 
         return results
 
-    def fetch_etf_nav(self, ins_code: str) -> dict:
+    async def fetch_etf_nav(
+        self,
+        client: httpx.AsyncClient,
+        ins_code: str,
+    ) -> dict:
         """
-        دریافت NAV لحظه‌ای ETF.
+        دریافت NAV لحظه‌ای ETF — نسخه همزمان (async).
+
         مهندسی: این اندپوینت بورس برای بعضی نمادها 500 می‌دهد، پس از
-        request_with_retry استفاده نمی‌کنیم تا Circuit Breaker اصلی را آلوده نکنیم.
+        request_with_retry استفاده نمی‌کنیم تا Circuit Breaker اصلی را آلوده
+        نکنیم. در فاز شبکه چرخه سینک، ده‌ها درخواست از این نوع همزمان اجرا
+        می‌شوند؛ کلاینت توسط فراخواننده ساخته می‌شود تا یک اتصال در کل
+        چرخه استفاده شود.
         """
         url = (
             f"{self.base_url}/Fund/"
@@ -208,12 +217,8 @@ class TSETMCProvider:
         )
 
         try:
-            response = requests.get(
-                url,
-                headers=self.headers,
-                timeout=5,
-            )
-        except requests.RequestException:
+            response = await client.get(url)
+        except httpx.HTTPError:
             logger.debug(
                 "Timeout/error fetching ETF NAV for %s. Skipping...",
                 ins_code,
@@ -238,11 +243,17 @@ class TSETMCProvider:
 
         return data.get("etf") or {}
 
-    def fetch_etf_instrument_info(self, ins_code: str) -> dict | None:
+    async def fetch_etf_instrument_info(
+        self,
+        client: httpx.AsyncClient,
+        ins_code: str,
+    ) -> dict | None:
         """
-        دریافت اطلاعات ابزار شامل NAV از API Instrument Info.
+        دریافت اطلاعات ابزار شامل NAV از API Instrument Info — نسخه همزمان.
+
         مهندسی: این اندپوینت هم ناپایدار است و از request_with_retry
-        استفاده نمی‌کنیم تا Circuit Breaker اصلی را آلوده نکنیم.
+        استفاده نمی‌کنیم تا Circuit Breaker اصلی را آلوده نکنیم. در فاز
+        شبکه چرخه سینک همزمان با سایر درخواست‌های تکمیلی اجرا می‌شود.
         """
         url = (
             f"{self.base_url}/Instrument/"
@@ -250,12 +261,8 @@ class TSETMCProvider:
         )
 
         try:
-            response = requests.get(
-                url,
-                headers=self.headers,
-                timeout=5,
-            )
-        except requests.RequestException:
+            response = await client.get(url)
+        except httpx.HTTPError:
             logger.debug(
                 "Timeout/error fetching ETF instrument info for %s. Skipping...",
                 ins_code,
@@ -319,8 +326,9 @@ class TSETMCProvider:
 
         return data.get("indexB2", [])
 
-    def fetch_instrument_identity(
+    async def fetch_instrument_identity(
         self,
+        client: httpx.AsyncClient,
         ins_code: str,
     ) -> dict | None:
         url = (
@@ -329,12 +337,8 @@ class TSETMCProvider:
         )
 
         try:
-            response = requests.get(
-                url,
-                headers=self.headers,
-                timeout=5,
-            )
-        except requests.RequestException:
+            response = await client.get(url)
+        except httpx.HTTPError:
             logger.debug(
                 "Timeout/error fetching instrument identity %s. Skipping...",
                 ins_code,

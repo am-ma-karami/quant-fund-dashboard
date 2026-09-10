@@ -5,7 +5,7 @@ from apscheduler.schedulers.blocking import BlockingScheduler
 
 from core.database import engine, Base
 from services.fund_sync import sync_funds_pipeline
-from services.tasks import update_etf_market_data
+from services.tasks import update_etf_market_data_job
 from services.history_bootstrap import backfill_single_fund
 from services.benchmark_sync import sync_benchmark_history
 from services.validation_sweep import run_validation_sweep
@@ -46,7 +46,7 @@ def run_stock_fund_sync():
 def run_etf_sync():
     try:
         logger.info("Starting ETF sync...")
-        update_etf_market_data()
+        update_etf_market_data_job()
         logger.info("ETF sync completed.")
     except Exception:
         logger.exception("ETF sync failed.")
