@@ -8,6 +8,7 @@ from services.fund_sync import sync_funds_pipeline
 from services.tasks import update_etf_market_data
 from services.history_bootstrap import backfill_single_fund
 from services.benchmark_sync import sync_benchmark_history
+from services.validation_sweep import run_validation_sweep
 
 
 logging.basicConfig(
@@ -69,6 +70,15 @@ def run_benchmark_sync():
         logger.exception("Benchmark sync failed.")
 
 
+def run_validation_sweep_job():
+    try:
+        logger.info("Starting validation sweep...")
+        run_validation_sweep()
+        logger.info("Validation sweep completed.")
+    except Exception:
+        logger.exception("Validation sweep failed.")
+
+
 if __name__ == "__main__":
     logger.info("Starting Quant Worker Service...")
 
@@ -76,6 +86,7 @@ if __name__ == "__main__":
     run_etf_sync()
     run_history_backfill()
     run_benchmark_sync()
+    run_validation_sweep_job()
 
     scheduler = BlockingScheduler()
 
@@ -114,6 +125,16 @@ if __name__ == "__main__":
         "interval",
         minutes=15,
         id="benchmark_sync",
+        max_instances=1,
+        coalesce=True,
+        misfire_grace_time=60,
+    )
+
+    scheduler.add_job(
+        run_validation_sweep_job,
+        "interval",
+        minutes=15,
+        id="validation_sweep",
         max_instances=1,
         coalesce=True,
         misfire_grace_time=60,

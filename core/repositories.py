@@ -1,6 +1,6 @@
 from sqlalchemy.orm import Session
 from sqlalchemy import text
-from core.models import Fund, FundHistory, HistoryBackfillState, ETFMarket, ETFMarketHistory, BenchmarkHistory
+from core.models import Fund, FundHistory, HistoryBackfillState, ETFMarket, ETFMarketHistory, BenchmarkHistory, DataQualityIssue
 from services.risk import returns_from_prices, annualized_volatility, sharpe_ratio, maximum_drawdown
 from datetime import datetime
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -564,3 +564,64 @@ class BenchmarkRepository:
         )
 
         return list(reversed(rows))
+
+
+class DataQualityRepository:
+    """ثبت و گزارش تخلف‌های لایه اعتبارسنجی داده."""
+
+    def __init__(self, db: Session):
+        self.db = db
+
+    def record_issues(self, issues) -> int:
+        """ثبت دسته‌ای تخلف‌ها با upsert (تخلف تکراری، شمارنده را بالا نمی‌برد)."""
+        if not issues:
+            return 0
+
+        values = [
+            {
+                "fund_reg_no": issue.fund_reg_no,
+                "rule": issue.rule,
+                "severity": issue.severity,
+                "detail": issue.detail,
+                "observed_at": issue.observed_at,
+            }
+            for issue in issues
+        ]
+
+        stmt = pg_insert(DataQualityIssue).values(values)
+        stmt = stmt.on_conflict_do_update(
+            index_elements=["fund_reg_no", "rule", "observed_at"],
+            set_=dict(
+                severity=stmt.excluded.severity,
+                detail=stmt.excluded.detail,
+            ),
+        )
+
+        self.db.execute(stmt)
+        return len(values)
+
+    def get_summary(self, since=None) -> dict:
+        """شمار تخلف‌های اخیر بر اساس شدت."""
+        query = self.db.query(DataQualityIssue)
+        if since is not None:
+            query = query.filter(DataQualityIssue.observed_at >= since)
+        rows = query.all()
+
+        summary = {
+            "critical": 0,
+            "warning": 0,
+            "info": 0,
+            "total": len(rows),
+        }
+        for row in rows:
+            severity = row.severity or "info"
+            summary[severity] = summary.get(severity, 0) + 1
+        return summary
+
+    def get_recent_issues(self, limit: int = 5) -> list:
+        return (
+            self.db.query(DataQualityIssue)
+            .order_by(DataQualityIssue.detected_at.desc())
+            .limit(limit)
+            .all()
+        )

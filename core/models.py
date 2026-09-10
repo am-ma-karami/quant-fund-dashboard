@@ -237,3 +237,30 @@ class BenchmarkHistory(Base):
             name="uix_benchmark_observation",
         ),
     )
+
+
+class DataQualityIssue(Base):
+    """تخلف‌های شناسایی‌شده توسط لایه اعتبارسنجی (services/validation.py)."""
+    __tablename__ = "data_quality_issues"
+
+    id = Column(Integer, primary_key=True, index=True)
+    fund_reg_no = Column(
+        Integer,
+        ForeignKey("funds.reg_no"),
+        nullable=False,
+        index=True,
+    )
+    rule = Column(String(64), nullable=False)
+    severity = Column(String(16), nullable=False, default="warning")
+    detail = Column(String(512), nullable=True)
+    observed_at = Column(DateTime, nullable=False)
+    detected_at = Column(DateTime, default=iran_time)
+
+    __table_args__ = (
+        UniqueConstraint(
+            "fund_reg_no",
+            "rule",
+            "observed_at",
+            name="uix_quality_issue",
+        ),
+    )

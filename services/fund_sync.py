@@ -2,12 +2,16 @@ import logging
 from datetime import datetime, timedelta
 from dateutil import parser
 from core.database import SessionLocal
-from core.repositories import FundRepository
-from core.models import SyncStatus
+from core.repositories import FundRepository, DataQualityRepository
+from core.models import Fund, SyncStatus
 from services.providers import TSETMCProvider
 from services.preprocessing import clean_fund_data
 from services.cache_service import invalidate_dashboard_cache
 from services.data_quality import calculate_coverage, calculate_quality_score
+from services.validation import (
+    validate_live_record,
+    SEVERITY_CRITICAL,
+)
 
 logger = logging.getLogger(__name__)
 provider = TSETMCProvider()
@@ -32,6 +36,15 @@ def sync_funds_pipeline(
         total_received = 0
         total_valid = 0
         total_failed = 0
+
+        # NAV قبلی هر صندوق — برای اعتبارسنجی حرکت غیرعادی، در یک کوئری
+        prev_nav_map = {
+            reg_no: nav
+            for reg_no, nav in db.query(Fund.reg_no, Fund.nav_stat).all()
+        }
+
+        # تخلف‌های این چرخه — یکجا در پایان ثبت می‌شوند
+        cycle_issues = []
 
         for f_type in fund_types:
             logger.info(
@@ -62,6 +75,38 @@ def sync_funds_pipeline(
                         total_failed += 1
                         continue
 
+                    record_date_str = item.get("recordDate")
+                    observed_at = (
+                        parser.parse(record_date_str)
+                        if record_date_str
+                        else started_at
+                    )
+
+                    # اعتبارسنجی: تخلف بحرانی → قرنطینه (عدم ذخیره این چرخه)
+                    issues = validate_live_record(
+                        reg_no=reg_no,
+                        nav=clean_item["nav_stat"],
+                        units=clean_item["units"],
+                        net_asset=clean_item["net_asset"],
+                        prev_nav=prev_nav_map.get(reg_no),
+                        observed_at=observed_at,
+                    )
+
+                    if any(
+                        issue.severity == SEVERITY_CRITICAL
+                        for issue in issues
+                    ):
+                        total_failed += 1
+                        cycle_issues.extend(issues)
+                        logger.warning(
+                            "Quarantined fund %s: %s",
+                            reg_no,
+                            "; ".join(issue.detail for issue in issues),
+                        )
+                        continue
+
+                    cycle_issues.extend(issues)
+
                     fund_repo.upsert_fund(
                         reg_no,
                         clean_item["name"],
@@ -69,20 +114,15 @@ def sync_funds_pipeline(
                         clean_item
                     )
 
-                    record_date_str = item.get("recordDate")
-
-                    if record_date_str:
-                        observed_at = parser.parse(record_date_str)
-
-                        fund_repo.upsert_fund_history(
-                            reg_no=reg_no,
-                            nav_stat=clean_item["nav_stat"],
-                            nav_sub=clean_item["nav_sub"],
-                            nav_red=clean_item["nav_red"],
-                            net_asset=clean_item["net_asset"],
-                            units=clean_item["units"],
-                            observed_at=observed_at
-                        )
+                    fund_repo.upsert_fund_history(
+                        reg_no=reg_no,
+                        nav_stat=clean_item["nav_stat"],
+                        nav_sub=clean_item["nav_sub"],
+                        nav_red=clean_item["nav_red"],
+                        net_asset=clean_item["net_asset"],
+                        units=clean_item["units"],
+                        observed_at=observed_at
+                    )
 
                     total_valid += 1
 
@@ -92,6 +132,8 @@ def sync_funds_pipeline(
                         "Failed processing fund item"
                     )
                     continue
+
+        DataQualityRepository(db).record_issues(cycle_issues)
 
         db.commit()
 

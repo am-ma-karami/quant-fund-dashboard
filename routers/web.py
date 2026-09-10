@@ -6,7 +6,7 @@ from sqlalchemy import text
 from datetime import timedelta
 
 from core.database import get_db
-from core.repositories import FundRepository, ETFRepository, BenchmarkRepository, iran_time
+from core.repositories import FundRepository, ETFRepository, BenchmarkRepository, DataQualityRepository, iran_time
 from core.models import Fund, FundHistory, ETFMarket, BenchmarkHistory
 from core.benchmark import TEHRAN_TOTAL_INDEX
 from services.analytics import (
@@ -572,6 +572,13 @@ def api_data_quality(
     received = status.received_count or 0
     coverage = (received / expected) if expected > 0 else 0.0
 
+    # خلاصه تخلف‌های لایه اعتبارسنجی (۳۰ روز اخیر)
+    quality_repo = DataQualityRepository(db)
+    issues_summary = quality_repo.get_summary(
+        since=iran_time() - timedelta(days=30)
+    )
+    recent_issues = quality_repo.get_recent_issues(limit=5)
+
     return {
         "status": status.status,
         "expected_funds": expected,
@@ -587,6 +594,21 @@ def api_data_quality(
         "latency_ms": status.duration_ms,
         "provider": status.provider or "TSETMC",
         "quality_score": status.quality_score,
+        "issues": issues_summary,
+        "recent_issues": [
+            {
+                "reg_no": issue.fund_reg_no,
+                "rule": issue.rule,
+                "severity": issue.severity,
+                "detail": issue.detail,
+                "observed_at": (
+                    issue.observed_at.isoformat()
+                    if issue.observed_at
+                    else None
+                ),
+            }
+            for issue in recent_issues
+        ],
     }
 
 

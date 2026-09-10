@@ -75,6 +75,18 @@
         </div>
     </div>
 
+    <!-- VALIDATION ISSUES -->
+    <div class="row text-center g-4 mt-2 border-top border-secondary pt-3">
+        <div class="col-12">
+            <div class="text-secondary mb-1 small">VALIDATION ISSUES — ۳۰ روز اخیر (اعتبارسنجی خودکار صحت داده)</div>
+            <div class="fs-6 fw-bold" id="dq_issues">
+                <span class="text-danger">بحرانی: -</span>
+                <span class="text-warning ms-3">هشدار: -</span>
+                <span class="text-muted ms-3">اطلاع: -</span>
+            </div>
+        </div>
+    </div>
+
     <!-- HISTORY BACKFILL PROGRESS -->
     <div class="row text-center g-4 mt-3 border-top border-secondary pt-3">
         <div class="col-12">
@@ -195,6 +207,14 @@
                 } else {
                     qualityEl.innerText = '-';
                     qualityEl.className = 'fs-4 fw-bold text-muted';
+                }
+
+                const issuesEl = document.getElementById('dq_issues');
+                if (issuesEl && data.issues) {
+                    issuesEl.innerHTML =
+                        `<span class="text-danger">بحرانی: ${data.issues.critical || 0}</span>` +
+                        `<span class="text-warning ms-3">هشدار: ${data.issues.warning || 0}</span>` +
+                        `<span class="text-muted ms-3">اطلاع: ${data.issues.info || 0}</span>`;
                 }
             });
     }
