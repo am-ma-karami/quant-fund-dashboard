@@ -108,6 +108,10 @@ async function loadHeatmap() {
             window.heatmapChart.destroy();
         }
 
+        // متن «در حال دریافت اطلاعات» که بالای نقشه تزریق شده بود
+        // باید حذف شود — Highcharts محتوای container را پاک نمی‌کند
+        container.innerHTML = "";
+
         window.heatmapChart = Highcharts.chart(container, {
             colorAxis: {
                 min: -15,
@@ -253,7 +257,15 @@ async function loadRiskReturn() {
             window.riskReturnChart.destroy();
         }
 
-        window.riskReturnChart = new Chart(container, {
+        // Chart.js فقط روی عنصر <canvas> کار می‌کند — دادن div به آن
+        // context را null می‌کند و نمودار بی‌صدا رسم نمی‌شود. به همین
+        // دلیل canvas اینجا ساخته می‌شود و متن «در حال دریافت اطلاعات»
+        // اولیه قالب هم با پاک‌کردن container حذف می‌شود.
+        container.innerHTML = "";
+        const canvas = document.createElement("canvas");
+        container.appendChild(canvas);
+
+        window.riskReturnChart = new Chart(canvas, {
             type: "bubble",
             data: {
                 datasets: [{
