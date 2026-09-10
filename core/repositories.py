@@ -363,6 +363,10 @@ class ETFRepository:
         if not etf:
             etf = ETFMarket(ins_code=ins_code, symbol=symbol, name=name)
             self.db.add(etf)
+            # بدون flush، کوئری get_etf_by_ins_code در همان تراکنش
+            # (با autoflush=False) ردیف تازه را نمی‌بیند و غنی‌سازی هویت
+            # (sector/market/status) برای ETFهای تازه‌دیده‌شده هرگز اجرا نمی‌شود.
+            self.db.flush()
 
         etf.last_price = data.get('last_price')
         etf.closing_price = data.get('closing_price')

@@ -240,13 +240,19 @@ class BenchmarkHistory(Base):
 
 
 class DataQualityIssue(Base):
-    """تخلف‌های شناسایی‌شده توسط لایه اعتبارسنجی (services/validation.py)."""
+    """تخلف‌های شناسایی‌شده توسط لایه اعتبارسنجی (services/validation.py).
+
+    جدول ممیزی (audit log) است و عمداً کلید خارجی به funds ندارد:
+    رکورد بحرانی در مسیر زنده «قرنطینه» می‌شود — یعنی در funds ذخیره
+    نمی‌شود — و ممیزی باید دقیقاً در همین حالت بتواند درباره آن گزارش
+    دهد. کلید خارجی، ثبت تخلف را با خطای یکپارچگی شکست می‌داد و کل
+    تراکنش چرخه سینک (شامل صندوق‌های سالم) را rollback می‌کرد.
+    """
     __tablename__ = "data_quality_issues"
 
     id = Column(Integer, primary_key=True, index=True)
     fund_reg_no = Column(
         Integer,
-        ForeignKey("funds.reg_no"),
         nullable=False,
         index=True,
     )
