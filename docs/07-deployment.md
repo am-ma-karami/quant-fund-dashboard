@@ -50,7 +50,7 @@ docker compose ps
 
 ## ۷.۵ تغییرات اسکیما (Migrations)
 
-پوشه `migrations/` شامل اسکریپت‌های SQL به ترتیب شماره است (۱۰ اسکریپت تاکنون):
+پوشه `migrations/` شامل اسکریپت‌های SQL به ترتیب شماره است (۱۱ اسکریپت تاکنون):
 
 ```bash
 docker exec -i quant-fund-dashboard-db-1 psql -U quant_user -d fund_db < migrations/00N_name.sql
