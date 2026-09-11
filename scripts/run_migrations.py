@@ -1,4 +1,4 @@
-"""Boot-time schema migration runner.
+"""Boot-time schema migration runner and data seeder.
 
 Applied at container start (scripts/entrypoint.sh) before uvicorn/worker:
 base tables come from the SQLAlchemy models (create_all), then every SQL
@@ -9,8 +9,16 @@ restart retries it.
 
 A Postgres advisory lock serializes concurrent boots: web and worker start
 at the same time on a fresh volume and must not apply the same file twice.
+
+After migrations, if the database is empty (fresh volume), a seed snapshot
+(seed/dashboard_seed.sql.gz — real TSETMC data collected by this system
+itself) is loaded so the dashboard is fully warm from the first second;
+live syncs take over from there. The seed is a single transaction and
+non-fatal: if it ever fails, the system boots anyway and the live pipeline
+warms the database on its own.
 """
 
+import gzip
 import glob
 import logging
 import os
@@ -35,6 +43,56 @@ logger = logging.getLogger("migrate")
 MIGRATIONS_DIR = os.path.normpath(
     os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "migrations")
 )
+
+SEED_FILE = os.path.normpath(
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "seed", "dashboard_seed.sql.gz")
+)
+
+
+def _seed_if_empty(conn) -> None:
+    """دیتابیس خالی (ولوم تازه) را با اسنپ‌شات داده واقعی پر می‌کند.
+
+    اسنپ‌شات، داده‌ای است که خود سیستم از TSETMC جمع کرده — نه داده ساختگی —
+    و فقط وقتی بارگذاری می‌شود که جدول funds خالی باشد. کل بارگذاری در یک
+    تراکنش است: یا کامل می‌نشیند یا هیچ‌چیز؛ و شکست آن کشنده نیست، چون
+    خط لوله زنده خودش دیتابیس را گرم می‌کند.
+    """
+    if os.environ.get("SEED_IF_EMPTY", "1") == "0":
+        logger.info("seeding disabled by SEED_IF_EMPTY=0")
+        return
+
+    if not os.path.exists(SEED_FILE):
+        logger.info("no seed file at %s — skipping", SEED_FILE)
+        return
+
+    with conn.cursor() as cur:
+        # نام اسکیما صریح است چون خود اسنپ‌شات بعداً search_path را عوض می‌کند.
+        cur.execute("SELECT count(*) FROM public.funds")
+        (fund_count,) = cur.fetchone()
+        if fund_count:
+            logger.info("database already has %s funds — seed skipped", fund_count)
+            return
+
+        logger.info("empty database — loading seed snapshot %s", SEED_FILE)
+        try:
+            # کل فایل (SET ها + INSERT ها + setval ها) یک‌جا اجرا می‌شود؛
+            # commit در پایان یعنی همه یا هیچ.
+            with gzip.open(SEED_FILE, "rt", encoding="utf-8") as handle:
+                cur.execute(handle.read())
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            logger.exception("seed load failed and was rolled back — live sync will warm the database")
+            return
+
+        cur.execute(
+            "SELECT (SELECT count(*) FROM public.funds),"
+            " (SELECT count(*) FROM public.fund_histories),"
+            " (SELECT count(*) FROM public.etf_market),"
+            " (SELECT count(*) FROM public.etf_market_histories),"
+            " (SELECT count(*) FROM public.benchmark_histories)"
+        )
+        logger.info("seed loaded: %s funds / %s fund histories / %s ETF rows / %s ETF histories / %s benchmark rows", *cur.fetchone())
 
 
 def run() -> int:
@@ -88,6 +146,9 @@ def run() -> int:
                     conn.rollback()
                     logger.exception("migration %s failed and was rolled back", filename)
                     return 1
+
+        # هنوز زیر قفل advisory هستیم: فقط یک فرآیند seed می‌کند.
+        _seed_if_empty(conn)
 
         logger.info(
             "schema up to date: %d file(s) known, %d applied now",
