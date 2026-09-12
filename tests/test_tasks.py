@@ -203,6 +203,31 @@ class TestBoardStorage:
         finally:
             db.close()
 
+    def test_premium_falls_back_to_subscription_price(
+        self, db_session, monkeypatch
+    ):
+        # نبود NAV و نگاشت: قیمت صدور زنده (نزدیک به قیمت بازار)
+        # مبنای پریمیوم می‌شود — با محک سازگاری ۳۰٪
+        _run(
+            monkeypatch,
+            db_session,
+            [_etf_item(nav=None, p_red=None, p_sub=990.0)],
+            responses={"instrument_info": None},
+        )
+
+        db = _fresh(db_session)
+        try:
+            row = (
+                db.query(ETFMarket)
+                .filter(ETFMarket.ins_code == "1000")
+                .first()
+            )
+            # (1050 / 990 − 1) × 100 ≈ 6.06
+            assert row.nav == 990.0
+            assert row.premium_discount == pytest.approx(6.06, abs=0.01)
+        finally:
+            db.close()
+
 
 class TestEnrichment:
     def test_nav_enriched_from_instrument_info(
@@ -281,6 +306,7 @@ class TestIdentityAndMapping:
                 reg_no=111,
                 name="صندوق سرمایه گذاری در سهام آرامش",
                 fund_type=6,
+                nav_stat=1000.0,
             )
         )
         db_session.commit()
@@ -296,6 +322,84 @@ class TestIdentityAndMapping:
             fund = db.query(Fund).filter(Fund.reg_no == 111).first()
             assert fund.ins_code == "1000"
             assert fund.is_etf is True
+        finally:
+            db.close()
+
+    def test_implausible_fund_nav_blocks_mapping(
+        self, db_session, monkeypatch
+    ):
+        # نام تطبیق می‌خورد ولی NAV صندوق با قیمت ETF هم‌مقیاس نیست —
+        # این امضای تطبیق اشتباه است (در داده واقعی: «اون» از «آوند»
+        # داخل «تعاون»). نگاشت نباید بسته شود و پریمیوم NULL می‌ماند.
+        db_session.add(
+            Fund(
+                reg_no=111,
+                name="صندوق سرمایه گذاری در سهام آرامش",
+                fund_type=6,
+                nav_stat=100.0,
+            )
+        )
+        db_session.commit()
+
+        _run(
+            monkeypatch,
+            db_session,
+            [_etf_item(nav=None, p_red=None, p_sub=None)],
+            responses={"instrument_info": None, "etf": {}},
+        )
+
+        db = _fresh(db_session)
+        try:
+            fund = db.query(Fund).filter(Fund.reg_no == 111).first()
+            assert fund.ins_code is None
+            assert fund.is_etf is False
+
+            row = (
+                db.query(ETFMarket)
+                .filter(ETFMarket.ins_code == "1000")
+                .first()
+            )
+            assert row.premium_discount is None
+        finally:
+            db.close()
+
+    def test_legacy_wrong_mapping_self_heals(
+        self, db_session, monkeypatch
+    ):
+        # نگاشت غلطی که نسخه‌های قبلی فقط با نام بسته بودند: NAV صندوق
+        # با قیمت بازار ناسازگار است — چرخه بعد خودش نگاشت را باز
+        # می‌کند و چون نامزد تأییدشده‌ای نیست، بی‌نگاشت می‌ماند.
+        db_session.add(
+            Fund(
+                reg_no=111,
+                name="صندوق سرمایه گذاری در سهام آرامش",
+                fund_type=6,
+                nav_stat=100.0,
+                ins_code="1000",
+                is_etf=True,
+            )
+        )
+        db_session.commit()
+
+        _run(
+            monkeypatch,
+            db_session,
+            [_etf_item(nav=None, p_red=None, p_sub=None)],
+            responses={"instrument_info": None, "etf": {}},
+        )
+
+        db = _fresh(db_session)
+        try:
+            fund = db.query(Fund).filter(Fund.reg_no == 111).first()
+            assert fund.ins_code is None
+            assert fund.is_etf is False
+
+            row = (
+                db.query(ETFMarket)
+                .filter(ETFMarket.ins_code == "1000")
+                .first()
+            )
+            assert row.premium_discount is None
         finally:
             db.close()
 
