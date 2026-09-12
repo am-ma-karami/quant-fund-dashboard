@@ -28,10 +28,6 @@ def normalize_fund_name(name: str) -> str:
         "بخشی",
         "نوع دوم",
         "مشترک",
-        "یکم",
-        "د",
-        "ب",
-        "س",
         "اهرمی",
     ]
     for w in words_to_remove:
