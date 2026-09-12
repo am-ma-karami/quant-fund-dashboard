@@ -104,6 +104,62 @@ class TestBackfillSingleFund:
             state = db.get(HistoryBackfillState, 123)
             assert state is not None
             assert state.checked_at is not None
+            assert state.source_count == 20
+        finally:
+            db.close()
+
+    def test_source_count_records_short_source(self, db_session, monkeypatch):
+        """منبع با کمتر از ۹۰ رکورد: تعداد واقعی منبع باید ثبت شود."""
+        self._patch_session(monkeypatch, db_session)
+        self._add_fund(db_session, 555)
+
+        monkeypatch.setattr(
+            hb.provider,
+            "fetch_fund_history_detail",
+            lambda reg_no: [
+                {"recordDate": d, "navStat": 1.0, "netAsset": 1e9}
+                for d in _iso_dates(3)
+            ],
+        )
+
+        hb.backfill_single_fund()
+
+        db = self._fresh_session(db_session)
+        try:
+            state = db.get(HistoryBackfillState, 555)
+            assert state is not None
+            assert state.source_count == 3
+        finally:
+            db.close()
+
+    def test_failed_fetch_preserves_previous_source_count(self, db_session, monkeypatch):
+        """شکست دریافت نباید شواهد تلاش موفق قبلی را پاک کند."""
+        self._patch_session(monkeypatch, db_session)
+        self._add_fund(db_session, 666)
+        stale = iran_time() - timedelta(hours=24)
+        db_session.add(
+            HistoryBackfillState(
+                fund_reg_no=666,
+                checked_at=stale,
+                source_count=5,
+            )
+        )
+        db_session.commit()
+
+        monkeypatch.setattr(
+            hb.provider,
+            "fetch_fund_history_detail",
+            lambda reg_no: None,
+        )
+
+        hb.backfill_single_fund()
+
+        db = self._fresh_session(db_session)
+        try:
+            state = db.get(HistoryBackfillState, 666)
+            assert state is not None
+            assert state.checked_at > stale
+            assert state.source_count == 5
         finally:
             db.close()
 

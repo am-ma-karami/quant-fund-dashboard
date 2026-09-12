@@ -234,7 +234,11 @@
                 if (data.total > 0) {
                     completeBar.style.width = data.percentage + '%';
                     missingBar.style.width = (100 - data.percentage) + '%';
-                    completeText.innerText = data.complete + ' / ' + data.total + ' funds (' + data.percentage + '%)';
+                    let completeLabel = data.complete + ' / ' + data.total + ' funds (' + data.percentage + '%)';
+                    if (data.source_limited > 0) {
+                        completeLabel += ' — ' + data.source_limited + ' of them have <90 records at source';
+                    }
+                    completeText.innerText = completeLabel;
                     missingText.innerText = data.missing + ' missing';
                 } else {
                     completeBar.style.width = '0%';

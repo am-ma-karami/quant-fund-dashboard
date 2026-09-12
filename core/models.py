@@ -100,6 +100,7 @@ class HistoryBackfillState(Base):
 
     fund_reg_no = Column(Integer, ForeignKey("funds.reg_no"), primary_key=True)
     checked_at = Column(DateTime, nullable=False, default=iran_time, index=True)
+    source_count = Column(Integer, nullable=True)
 
 
 class ETFMarket(Base):

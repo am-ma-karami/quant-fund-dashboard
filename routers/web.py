@@ -7,7 +7,7 @@ from datetime import timedelta
 
 from core.database import get_db
 from core.repositories import FundRepository, ETFRepository, BenchmarkRepository, DataQualityRepository, iran_time
-from core.models import Fund, FundHistory, ETFMarket, BenchmarkHistory
+from core.models import Fund, FundHistory, ETFMarket, BenchmarkHistory, HistoryBackfillState
 from core.benchmark import TEHRAN_TOTAL_INDEX
 from services.analytics import (
     active_return,
@@ -616,6 +616,10 @@ def api_data_quality(
 def api_history_backfill_progress(db: Session = Depends(get_db)):
     from sqlalchemy import func
     from core.repositories import FundRepository
+    from services.history_bootstrap import (
+        BACKFILL_TARGET_RECORDS,
+        SOURCE_COMPLETE_MAX_AGE_HOURS,
+    )
 
     repo = FundRepository(db)
 
@@ -627,11 +631,33 @@ def api_history_backfill_progress(db: Session = Depends(get_db)):
         func.count(FundHistory.id).label("hist_count"),
     ).group_by(FundHistory.fund_reg_no).subquery()
 
-    complete = (
-        eligible.outerjoin(history_query, Fund.reg_no == history_query.c.fund_reg_no)
-        .filter(func.coalesce(history_query.c.hist_count, 0) >= 90)
+    hist_count = func.coalesce(history_query.c.hist_count, 0)
+
+    joined = (
+        eligible
+        .outerjoin(history_query, Fund.reg_no == history_query.c.fund_reg_no)
+        .outerjoin(HistoryBackfillState, Fund.reg_no == HistoryBackfillState.fund_reg_no)
+    )
+
+    # کامل: یا حد نصاب ۹۰ رکورد ذخیره شده، یا هر آنچه منبع دارد ذخیره
+    # شده (source_count ثبت‌شده در تلاش موفق و تأیید نسبتاً تازه). بدون
+    # این شاخه، صندوق‌های تازه‌تأسیس که در منبع کمتر از ۹۰ رکورد دارند
+    # برای همیشه «ناقص» شمرده می‌شدند.
+    full = joined.filter(hist_count >= BACKFILL_TARGET_RECORDS).count()
+
+    verified_cutoff = iran_time() - timedelta(hours=SOURCE_COMPLETE_MAX_AGE_HOURS)
+    source_limited = (
+        joined
+        .filter(
+            hist_count < BACKFILL_TARGET_RECORDS,
+            HistoryBackfillState.source_count.isnot(None),
+            hist_count >= HistoryBackfillState.source_count,
+            HistoryBackfillState.checked_at >= verified_cutoff,
+        )
         .count()
     )
+
+    complete = full + source_limited
 
     total_records = db.query(func.count(FundHistory.id)).scalar() or 0
     funds_with_any_history = db.query(func.count(func.distinct(FundHistory.fund_reg_no))).scalar() or 0
@@ -642,6 +668,8 @@ def api_history_backfill_progress(db: Session = Depends(get_db)):
     return {
         "total": total_eligible,
         "complete": complete,
+        "full": full,
+        "source_limited": source_limited,
         "missing": missing,
         "percentage": round(pct, 1),
         "total_records": total_records,

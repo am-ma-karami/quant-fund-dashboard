@@ -441,7 +441,7 @@ class TSETMCProvider:
             data = response.json()
         except requests.RequestException:
             logger.debug("Failed to fetch history for fund %s", reg_no)
-            return []
+            return None
 
         history = data.get("fund", {}).get("stats", [])
 

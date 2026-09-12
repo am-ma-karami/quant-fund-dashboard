@@ -30,6 +30,10 @@ STALE_SOURCE_RETRY_HOURS = 6
 BACKFILL_TARGET_RECORDS = 90
 BACKFILL_BATCH_SIZE = 10
 ETF_HISTORY_DAYS = 90
+# پنجره‌ای که در آن یک صندوق «محدود به منبع» (تاریخچه منبع کمتر از ۹۰ رکورد)
+# در داشبورد «کامل» شمرده می‌شود. از فاصله تلاش مجدد (۶ ساعت) بزرگ‌تر است تا
+# بین دو چرخه بررسی، عدد جلو و عقب نپرد.
+SOURCE_COMPLETE_MAX_AGE_HOURS = 24
 
 
 def _funds_needing_backfill(db, limit: int) -> list[Fund]:
@@ -69,17 +73,25 @@ def _funds_needing_backfill(db, limit: int) -> list[Fund]:
     )
 
 
-def _mark_checked(db, reg_no: int):
-    """ثبت زمان آخرین تلاش backfill تا صندوق بی‌نهایت دانلود نشود."""
+def _mark_checked(db, reg_no: int, source_count: int | None = None):
+    """ثبت زمان آخرین تلاش backfill تا صندوق بی‌نهایت دانلود نشود.
+
+    ``source_count`` تعداد رکوردهای معتبری است که منبع در این تلاش برگرداند؛
+    فقط در تلاش موفق ثبت می‌شود — None یعنی مقدار قبلی دست نمی‌خورد (شکست
+    نباید شواهد یک تلاش موفق قبلی را پاک کند).
+    """
     try:
         state = db.get(HistoryBackfillState, reg_no)
         if state is not None:
             state.checked_at = iran_time()
+            if source_count is not None:
+                state.source_count = source_count
         else:
             db.add(
                 HistoryBackfillState(
                     fund_reg_no=reg_no,
                     checked_at=iran_time(),
+                    source_count=source_count,
                 )
             )
         db.commit()
@@ -136,44 +148,49 @@ def _backfill_etf_history(db, fund: Fund):
     )
 
 
-def _backfill_fund(db, repo: FundRepository, fund: Fund):
-    """دانلود و ذخیره کامل‌ترین تاریخچه موجود برای یک صندوق."""
+def _backfill_fund(db, repo: FundRepository, fund: Fund) -> int | None:
+    """دانلود و ذخیره کامل‌ترین تاریخچه موجود برای یک صندوق.
+
+    تعداد رکوردهای معتبر منبع را برمی‌گرداند (۰ یعنی پاسخ خالی معتبر)؛
+    None یعنی دریافت شکست خورد و چیزی قابل استناد نیست.
+    """
     reg_no = fund.reg_no
     logger.info("Backfilling history for Fund %s...", reg_no)
 
     history_data = provider.fetch_fund_history_detail(reg_no)
 
-    if history_data:
-        parsed_history = []
-        for item in history_data:
-            observed_at = parse_tsetmc_date(item.get("recordDate"))
-            if observed_at is None:
-                continue
-            parsed_history.append((observed_at, item))
+    if history_data is None:
+        logger.warning("History fetch failed for Fund %s", reg_no)
+        return None
 
-        parsed_history.sort(key=lambda entry: entry[0], reverse=True)
+    parsed_history = []
+    for item in history_data:
+        observed_at = parse_tsetmc_date(item.get("recordDate"))
+        if observed_at is None:
+            continue
+        parsed_history.append((observed_at, item))
 
-        recent = parsed_history[:BACKFILL_TARGET_RECORDS]
-        for observed_at, item in recent:
-            repo.upsert_fund_history(
-                reg_no=reg_no,
-                nav_stat=item.get("navStat"),
-                nav_sub=item.get("navSub"),
-                nav_red=item.get("navRed"),
-                net_asset=item.get("netAsset"),
-                units=item.get("units"),
-                observed_at=observed_at,
-            )
+    parsed_history.sort(key=lambda entry: entry[0], reverse=True)
 
-        db.commit()
-
-        logger.info(
-            "Successfully backfilled %s history records for Fund %s.",
-            len(recent),
-            reg_no,
+    recent = parsed_history[:BACKFILL_TARGET_RECORDS]
+    for observed_at, item in recent:
+        repo.upsert_fund_history(
+            reg_no=reg_no,
+            nav_stat=item.get("navStat"),
+            nav_sub=item.get("navSub"),
+            nav_red=item.get("navRed"),
+            net_asset=item.get("netAsset"),
+            units=item.get("units"),
+            observed_at=observed_at,
         )
-    else:
-        logger.warning("No history data returned for Fund %s", reg_no)
+
+    db.commit()
+
+    logger.info(
+        "Successfully backfilled %s history records for Fund %s.",
+        len(recent),
+        reg_no,
+    )
 
     if fund.is_etf and fund.ins_code:
         try:
@@ -185,6 +202,8 @@ def _backfill_fund(db, repo: FundRepository, fund: Fund):
                 "ETF history backfill failed for %s",
                 fund.ins_code,
             )
+
+    return len(recent)
 
 
 def backfill_single_fund():
@@ -208,13 +227,14 @@ def backfill_single_fund():
         for fund in funds_to_backfill:
             reg_no = fund.reg_no
 
+            source_count = None
             try:
-                _backfill_fund(db, fund_repo, fund)
+                source_count = _backfill_fund(db, fund_repo, fund)
             except Exception:
                 db.rollback()
                 logger.exception("Error backfilling Fund %s", reg_no)
 
-            _mark_checked(db, reg_no)
+            _mark_checked(db, reg_no, source_count=source_count)
 
     finally:
         db.close()
