@@ -27,6 +27,11 @@ logger = logging.getLogger(__name__)
 provider = TSETMCProvider()
 
 STALE_SOURCE_RETRY_HOURS = 6
+# تلاش ناموفقِ بدون هیچ شواهدی از منبع، خیلی زودتر تکرار می‌شود: یک ۵۰۲ لحظه‌ای
+# (مثل انفجار درخواست‌های بوت سرد که منبع را لحظه‌ای rate-limit می‌کند) نباید
+# صندوقی تازه‌کلون را ۶ ساعت در وضعیت «ناقص» نگه دارد. تلاشِ موفق — که شواهد
+# source_count ثبت کرده — همان فاصله ۶ ساعته را نگه می‌دارد.
+FAILED_RETRY_MINUTES = 15
 BACKFILL_TARGET_RECORDS = 90
 BACKFILL_BATCH_SIZE = 10
 ETF_HISTORY_DAYS = 90
@@ -48,6 +53,7 @@ def _funds_needing_backfill(db, limit: int) -> list[Fund]:
     )
 
     retry_cutoff = iran_time() - timedelta(hours=STALE_SOURCE_RETRY_HOURS)
+    failed_retry_cutoff = iran_time() - timedelta(minutes=FAILED_RETRY_MINUTES)
 
     return (
         db.query(Fund)
@@ -65,6 +71,10 @@ def _funds_needing_backfill(db, limit: int) -> list[Fund]:
             (
                 HistoryBackfillState.checked_at.is_(None)
                 | (HistoryBackfillState.checked_at < retry_cutoff)
+                | (
+                    HistoryBackfillState.source_count.is_(None)
+                    & (HistoryBackfillState.checked_at < failed_retry_cutoff)
+                )
             ),
         )
         .order_by(func.coalesce(history_counts.c.history_count, 0).asc())

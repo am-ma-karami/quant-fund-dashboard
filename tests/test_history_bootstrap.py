@@ -182,6 +182,63 @@ class TestBackfillSingleFund:
 
         assert calls == []
 
+    def test_failed_first_check_is_retried_soon(self, db_session, monkeypatch):
+        """شکست گذرای اولین تلاش (۵۰۲ لحظه‌ای در بوت سرد) نباید صندوق را
+        تمام فاصله ۶ ساعته قفل کند — بدون شواهد، تلاش مجدد کوتاه است."""
+        self._patch_session(monkeypatch, db_session)
+        self._add_fund(db_session, 700)
+        db_session.add(
+            HistoryBackfillState(
+                fund_reg_no=700,
+                checked_at=iran_time()
+                - timedelta(minutes=hb.FAILED_RETRY_MINUTES + 1),
+            )
+        )
+        db_session.commit()
+
+        monkeypatch.setattr(
+            hb.provider,
+            "fetch_fund_history_detail",
+            lambda reg_no: [
+                {"recordDate": d, "navStat": 1.0, "netAsset": 1e9}
+                for d in _iso_dates(3)
+            ],
+        )
+
+        hb.backfill_single_fund()
+
+        db = self._fresh_session(db_session)
+        try:
+            state = db.get(HistoryBackfillState, 700)
+            assert state.source_count == 3
+        finally:
+            db.close()
+
+    def test_fresh_failed_first_check_still_on_cooldown(self, db_session, monkeypatch):
+        """شکستِ تازه (زیر آستانه کوتاه) هنوز تلاش مجدد نمی‌شود — cooldown کوتاه
+        هم باید کف داشته باشد تا منبع خراب را هر ۱۰ ثانیه نکوبیم."""
+        self._patch_session(monkeypatch, db_session)
+        self._add_fund(db_session, 701)
+        db_session.add(
+            HistoryBackfillState(
+                fund_reg_no=701,
+                checked_at=iran_time()
+                - timedelta(minutes=hb.FAILED_RETRY_MINUTES - 1),
+            )
+        )
+        db_session.commit()
+
+        calls = []
+        monkeypatch.setattr(
+            hb.provider,
+            "fetch_fund_history_detail",
+            lambda reg_no: calls.append(reg_no) or [],
+        )
+
+        hb.backfill_single_fund()
+
+        assert calls == []
+
     def test_stale_checked_fund_is_retried(self, db_session, monkeypatch):
         self._patch_session(monkeypatch, db_session)
         self._add_fund(db_session, 789)
