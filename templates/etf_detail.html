@@ -275,9 +275,15 @@
                 } else {
                     premiumSeriesStatus.textContent = 'داده روزانه برای این ETF موجود نیست';
                 }
-            });
+            })
+            .catch(err => console.error("ETF update failed: ", err));
     }
     updateETF();
     setInterval(updateETF, 60000);
+
+    // بازگشت به تب، به‌روزرسانی فوری
+    document.addEventListener('visibilitychange', () => {
+        if (!document.hidden) updateETF();
+    });
 </script>
 {% endblock %}

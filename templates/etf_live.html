@@ -45,8 +45,10 @@
 </div>
 
 <script>
-    function formatNumber(value) {
-        return Number(value || 0).toLocaleString();
+    // مقدار null باید «-» بماند (نه 0) — دقیقاً مثل رندر سمت سرور
+    function fmt(value) {
+        if (value === null || value === undefined || value === '') return '-';
+        return Number(value).toLocaleString();
     }
 
     function renderEtfs(data) {
@@ -57,21 +59,24 @@
             tr.style.cursor = 'pointer';
             tr.onclick = () => window.location.href = `/etf/${etf.ins_code}`;
             const changeClass = etf.price_change > 0 ? 'text-success' : (etf.price_change < 0 ? 'text-danger' : '');
+            const premium = etf.premium;
+            const premiumClass = premium > 0 ? 'text-danger' : (premium < 0 ? 'text-success' : '');
             const cells = [
                 [etf.symbol, 'fw-bold text-primary'],
                 [etf.name, 'small'],
-                [formatNumber(etf.last_price), 'fw-bold'],
-                [formatNumber(etf.closing_price), ''],
-                [formatNumber(etf.nav_stat), 'fw-bold text-dark'],
-                [etf.premium !== null && etf.premium !== undefined ? (etf.premium > 0 ? '+' : '') + etf.premium.toFixed(2) + '%' : '-', etf.premium > 0 ? 'text-danger' : (etf.premium < 0 ? 'text-success' : '')],
-                [formatNumber(etf.price_change), changeClass],
-                [formatNumber(etf.total_trades), ''],
-                [etf.last_updated, 'small text-muted'],
+                [fmt(etf.last_price), 'fw-bold'],
+                [fmt(etf.closing_price), ''],
+                [fmt(etf.nav), 'fw-bold text-dark'],
+                [premium !== null && premium !== undefined ? (premium > 0 ? '+' : '') + premium.toFixed(2) + '%' : '-', premiumClass],
+                [fmt(etf.price_change || 0), changeClass],
+                [fmt(etf.total_trades), ''],
+                [etf.last_updated || '-', 'small text-muted'],
             ];
             cells.forEach(([value, className], index) => {
                 const td = document.createElement('td');
-                if className:
+                if (className) {
                     td.className = className;
+                }
                 if (index === 4 || index === 5) td.dir = 'ltr';
                 td.textContent = value;
                 tr.appendChild(td);
@@ -81,12 +86,14 @@
         tbody.replaceChildren(fragment);
     }
 
-    // سیستم آپدیت خودکار (AJAX Polling) هر 60 ثانیه
-    setInterval(() => {
+    // سیستم آپدیت خودکار (AJAX Polling) هر 60 ثانیه — هم‌قدم با چرخه سینک
+    function refreshEtfs() {
         fetch('/api/etfs')
             .then(response => response.json())
             .then(renderEtfs)
             .catch(err => console.error("Error fetching live data: ", err));
-    }, 60000);
+    }
+    refreshEtfs();
+    setInterval(refreshEtfs, 60000);
 </script>
 {% endblock %}

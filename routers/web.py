@@ -114,16 +114,16 @@ def api_get_etfs(db: Session = Depends(get_db)):
         fund = db.query(Fund).filter(Fund.ins_code == e.ins_code).first()
         nav_stat = fund.nav_stat if fund else None
 
-        premium = None
-        if nav_stat and nav_stat > 0 and e.last_price:
-            premium = ((e.last_price - nav_stat) / nav_stat) * 100
-
+        # nav و premium همان مقادیر ذخیره‌شده خط لوله‌اند (زنجیره مبنای
+        # NAV با بند سازگاری ۳۰٪ در مرحله ۲) — نه بازمحاسبه از navStat
+        # صندوق، تا تابلوی به‌روزشونده دقیقاً همان اعداد رندر سرور باشد.
         result.append({
             "ins_code": e.ins_code, "symbol": e.symbol, "name": e.name,
             "last_price": e.last_price, "closing_price": e.closing_price,
             "price_change": e.price_change, "total_trades": e.total_trades,
+            "nav": e.nav,
             "nav_stat": nav_stat,
-            "premium": round(premium, 2) if premium else None,
+            "premium": e.premium_discount,
             "last_updated": e.last_updated.strftime('%H:%M:%S') if e.last_updated else ""
         })
     return result
